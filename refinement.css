@@ -197,9 +197,9 @@ header h1 { font-size: clamp(2.4rem, 4.5vw, 4rem); letter-spacing: -.055em; }
 body[data-role="admin"] .profile .avatar { color: #075eb0; background: #dceeff; }
 
 body.launching { overflow: hidden; }
-body.launching #auth { pointer-events: none; animation: auth-exit .34s cubic-bezier(.4,0,1,1) both; }
+body.launching #auth { pointer-events: none; animation: auth-exit .72s cubic-bezier(.4,0,1,1) both; }
 body.launching #app { position: fixed; inset: 0; z-index: 20; overflow: auto; opacity: 0; transform: translateY(18px); }
-body.launching-ready #app { animation: app-enter .42s .08s cubic-bezier(.2,.8,.2,1) both; }
+body.launching-ready #app { animation: app-enter 1.15s .38s cubic-bezier(.2,.8,.2,1) both; }
 
 @keyframes auth-exit {
   to { opacity: 0; transform: scale(.985); filter: blur(4px); }
@@ -243,4 +243,46 @@ body.launching-ready #app { animation: app-enter .42s .08s cubic-bezier(.2,.8,.2
   .lab-panel .lab { gap: .75rem; padding-top: 1rem; }
   .lab-panel .group:nth-child(4n+3) { margin-left: 0; }
   .lab-panel .desk { min-height: 64px; }
+}
+
+/* Refined type, interaction, and reservation-flow pass. */
+:root { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif; }
+h1, h2, h3, .stat b, .profile-feature b { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif; font-weight: 600; letter-spacing: -.035em; }
+header h1 { font-size: clamp(2rem, 3.4vw, 3.1rem); font-weight: 600; letter-spacing: -.05em; }
+.booking-intro { padding: .25rem 0 1.8rem; }
+.booking-intro h2 { max-width: none; font-size: clamp(2rem, 3.6vw, 3.25rem); font-weight: 600; letter-spacing: -.05em; line-height: 1.15; }
+
+nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+nav::-webkit-scrollbar { display: none; }
+.nav-btn { flex: 0 0 auto; white-space: nowrap; }
+.profile { flex: 0 0 auto; }
+
+.booking { align-items: stretch; }
+.side-select { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+.booking-flow { align-self: start; }
+.side-select > .secondary { align-self: end; }
+.time-picker { display: grid; gap: .35rem; }
+.time-picker h3 { margin: 0; font-size: 1.05rem; }
+.time-picker .sub { margin: 0 0 .8rem; }
+.time-range { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: end; gap: .45rem; }
+.time-range label { gap: .32rem; color: var(--subtle); font-size: .68rem; }
+.time-range label span { padding-left: .1rem; }
+.time-range select { min-height: 42px; padding: .55rem .5rem; border-radius: 11px; color: var(--ink); font-size: .8rem; font-weight: 600; }
+.time-range > i { padding-bottom: .62rem; color: var(--subtle); font-style: normal; font-size: .72rem; }
+.booking-flow .selection { margin: 1rem 0 .75rem; }
+
+.panel, .booking-date, .today-spotlight, .stat { transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease, border-color .22s ease; }
+.lab-panel:hover, .booking-flow:hover, .today-spotlight:hover, .preference-panel:hover, .my-bookings:hover, .stat:hover { transform: translateY(-2px); box-shadow: 0 12px 28px #192d4112; }
+.booking-date:hover { transform: translateY(-1px); border-color: #0071e347; box-shadow: 0 8px 18px #192d410c; }
+.time-range select:hover { border-color: #0071e36b; background: #fff; }
+.primary:hover, .secondary:hover, .outline:hover { transform: translateY(-1px) scale(1.01); }
+
+@media (max-width: 900px) {
+  .side-select { height: auto; display: grid; grid-template-rows: none; }
+  .side-select > .secondary { align-self: auto; }
+}
+
+@media (max-width: 700px) {
+  .booking-intro h2 { font-size: clamp(2rem, 10vw, 2.7rem); }
+  .side-select { display: grid; }
 }
