@@ -1,18 +1,14 @@
 import { DEVICE_NUMBERS as DESKS, HOURLY_SLOTS as SLOTS, hourToMinutes, hourlyRange } from "./web/core/hourlyRules.js";
-import { loadDemoStore, saveDemoStore } from "./web/core/demoStore.js";
+import { supabase } from "./web/core/supabaseClient.js";
 
-// Browser keys hold only interface preferences; reservation data is delegated to the store module.
+// Browser storage holds language preference only; reservation data stays in Supabase.
 const LANGKEY="lab-booking-language";
 const EN={"实验室预约":"Lab Reservation","把时间留给探索":"Make time for discovery","选定设备，约好时间。把注意力留给实验本身。":"Choose a device and time. Leave your attention for the work.","登录":"Sign in","注册":"Create account","开始预约":"Start a reservation","登录后，设备、时段和你的记录，都在这里。":"Your devices, times, and records are all here.","学号 / 工号":"Student / staff ID","密码":"Password","登录并继续":"Sign in and continue","创建账号":"Create your account","管理员和学生均通过注册获得账号。":"Students and administrators both register here.","姓名":"Name","身份":"Role","学生":"Student","管理员":"Administrator","注册并进入":"Create account and enter","退出":"Sign out","实验室管理":"Lab Operations","实验室总览":"Lab Overview","总览":"Overview","设备":"Devices","用户":"Users","统计":"Reports","故障":"Issues","预约":"Reserve","时长":"Hours","我的":"Me","预约流程":"Reservation flow","三步完成":"Three steps","选择设备":"Choose a device","设置时间":"Set the time","确认预约":"Confirm reservation","台实验设备":"lab devices","我的预约":"My reservations","实验室平面图":"Lab floor plan","点击空闲设备，可同时选择多个位置":"Select any available device. Multiple devices are supported.","预约日期":"Reservation date","空闲":"Available","已预约":"Reserved","故障设备":"Faulty devices","已选择":"Selected","预约时间":"Reservation time","设置开始与结束时间":"Set a start and end time","开始":"Start","结束":"End","至":"to","尚未选择设备":"No device selected","确认预约 →":"Confirm reservation →","实验室状态":"Lab status","台设备可预约":"devices available","报告设备故障":"Report a device issue","近期预约":"Recent reservations","完整预约记录已合并至“我的”":"Your complete reservation history is in Me.","在我的中查看":"View in Me","暂无记录。":"No records yet.","我的":"Me","今天的预约":"Today's reservations","今天还没有预约":"Nothing reserved for today","选好设备和起止时间后，会显示在这里。":"Choose a device and time, and it will appear here.","个预约时段":"reserved hours","去预约":"Reserve now","预约偏好":"Reservation preferences","根据你的实际预约自动汇总":"Automatically summarised from your reservations.","常用设备":"Most used device","常用时段":"Most used time","未来预约":"Upcoming reservations","取消后设备时段会立即释放。":"Cancelling releases the device and time immediately.","取消":"Cancel","注册用户":"Registered users","当前实验人数":"Current lab users","今日预约时段":"Reserved hours today","今日设备使用":"Today's device use","设备管理":"Manage devices","待处理故障":"Open issues","学生上报后由管理员确认":"Student reports are confirmed by an administrator.","故障维护":"Issue maintenance","本周使用趋势":"Weekly usage","管理员可在“统计与导出”中下载管理文件。":"Administrative files are available in Reports.","设备状态维护":"Device status","40 台设备平面图":"40-device floor plan","点击设备可切换正常 / 故障；故障设备无法被学生预约。":"Select a device to mark it available or faulty. Faulty devices cannot be reserved.","维护说明":"Maintenance notes","红色 ! 是故障设备。管理员可直接标记或恢复设备，学生上报会在故障维护中保留。":"A red ! marks a faulty device. Administrators can mark or restore devices here.","录入故障记录":"Add an issue record","用户档案":"User profiles","已注册用户":"Registered users","注册角色、账号和累计预约时长。":"Role, account, and total reserved hours.","累计时长":"Total hours","统计与导出":"Reports and exports","实验累计时间":"Lab hours","累计实验时长":"Total lab hours","已完成记录":"Completed records","时长明细":"Hours detail","每个已预约的一小时设备时段累计为一小时。":"Each reserved device hour counts as one hour.","累计使用时段":"Total reserved hours","本周使用时段":"Reserved hours this week","可用设备":"Available devices","一周使用情况":"Weekly usage","按预约时段统计":"By reserved hour","管理员权限":"Administrator access","管理文件导出":"Export management files","导出每日设备使用情况和故障维护记录。":"Export daily device use and issue-maintenance records.","下载 count.txt":"Download count.txt","下载 error.txt":"Download error.txt","设备故障上报":"Device issue report","全部故障记录":"All issue records","我的故障记录":"My issue reports","处理后设备会恢复可预约状态。":"When resolved, devices become available again.","提交后请等待管理员维护设备状态。":"After submitting, please wait for an administrator to update the device.","上报故障":"Report an issue","已处理":"Resolved","待处理":"Open","故障中":"Faulty","恢复":"Restore","电脑编号":"Device number","故障描述":"Issue description","例如：显示器无信号，无法开机":"For example: the monitor has no signal or the device will not start.","提交故障记录":"Submit issue report","关闭":"Close","正在进入实验室":"Entering the lab","预约已确认":"Reservation confirmed","设备与时间已为你保留":"Your device and time are reserved"};
 Object.assign(EN,{"强制刷新状态":"Force refresh status","设备状态已更新。":"Device status updated.","设备状态已是最新。":"Device status is already current.","请至少选择一台设备。":"Select at least one device.","选择中存在故障或已预约设备。":"Your selection includes a faulty or reserved device.","NJUPT · 实验室预约":"NJUPT · Lab Reservation","NJUPT · 实验室管理":"NJUPT · Lab Operations","选择设备与起止时间　剩下的留给实验本身":"Choose a device and time. Leave the rest to the experiment.","暂无故障记录。":"No issue records yet.","预约时间已开始或今日预约已结束。":"This time has already started, or booking for today has closed.","管理员标记为故障。":"Marked faulty by an administrator.","管理员":"Administrator","故障已处理。":"Issue resolved.","设备已处于故障状态。":"This device is already marked as faulty.","故障已上报。":"Issue report submitted.","注册成功。":"Account created.","账号或密码不正确。":"Incorrect ID or password.","该账号已注册，请直接登录。":"This ID is already registered. Please sign in.","已下载 ":"Downloaded ","设备":"Device","设备总数：40 台":"Total devices: 40","开放时段：08:00-17:00（每 30 分钟）":"Hours: 08:00–17:00 (30-minute intervals)","智能实验室预约系统 - 每日使用情况统计":"Intelligent Lab Reservation System - Daily Usage","智能实验室预约系统 - 设备故障记录":"Intelligent Lab Reservation System - Device Issues","状态：":"Status: ","上报人：":"Reported by: ","描述：":"Description: ","账号操作":"Account action","注销账号":"Deactivate account","账号已注销。":"Account deactivated.","确认注销该学生账号吗？其预约将被删除，此操作不可恢复。":"Deactivate this student account? Their reservations will be deleted. This cannot be undone.","暂未形成":"Not established yet","预约已取消。":"Reservation cancelled.","今日预约已结束":"Booking closed for today","请选择未来日期继续预约":"Choose a future date to continue","智能实验室预约系统":"Intelligent Lab Reservation System","该设备已处于故障状态。":"This device is already marked as faulty.","每个已预约的半小时设备时段累计为半小时。":"Each reserved 30-minute device slot counts as half an hour."});
-Object.assign(EN,{"开放时段：08:00-17:00（每小时）":"Hours: 08:00–17:00 (hourly)","每个已预约的一小时设备时段累计为一小时。":"Each reserved device hour counts as one hour.","创建学生账号":"Create a student account","学生可直接注册。管理员账号由项目维护者在后台开通。":"Students can register directly. Administrator accounts are provisioned by the project maintainer.","学号":"Student ID"});
+Object.assign(EN,{"开放时段：08:00-17:00（每小时）":"Hours: 08:00–17:00 (hourly)","每个已预约的一小时设备时段累计为一小时。":"Each reserved device hour counts as one hour.","创建学生账号":"Create a student account","学生可直接注册。管理员账号由项目维护者在后台开通。":"Students can register directly. Administrator accounts are provisioned by the project maintainer.","学号":"Student ID","学号 / 管理员邮箱":"Student ID / administrator email"});
 const ZH=Object.fromEntries(Object.entries(EN).map(([zh,en])=>[en,zh]));
-let language=localStorage.getItem(LANGKEY)||"en", db=load(), page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9;
+let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9;
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
-/** Loads browser demonstration data while keeping administrator creation protected. */
-function load(){return loadDemoStore()}
-/** Saves browser demonstration data. Shared-backend mode will replace this adapter. */
-function save(){saveDemoStore(db)}
 function today(n=0){let d=new Date();d.setDate(d.getDate()+n);return d.toLocaleDateString("en-CA")}
 function user(){return db.users.find(x=>x.id===db.session)} function admin(){return user()?.role==="admin"}
 function id(p){return p+"-"+Date.now()+"-"+Math.random().toString(16).slice(2)}
@@ -40,9 +36,9 @@ function syncLanguage(){document.documentElement.lang=language==="en"?"en":"zh-C
 function setLanguage(next){language=next;localStorage.setItem(LANGKEY,language);render()}
 /** Returns the exact local end instant for a one-hour reservation. */
 function bookingEnd(booking){let start=slotStart(booking.hour);return new Date(`${booking.date}T00:00:00`).getTime()+(start+60)*60000}
-function refreshBookingStates(){let now=Date.now(),changed=false;db.bookings.forEach(booking=>{if(bookingEnd(booking)<=now&&booking.status!=="completed"){booking.status="completed";changed=true}});if(changed)save();return changed}
+function refreshBookingStates(){let now=Date.now(),changed=false;db.bookings.forEach(booking=>{if(bookingEnd(booking)<=now&&booking.status!=="cancelled"&&booking.status!=="completed"){booking.status="completed";changed=true}});return changed}
 function scheduleStatusRefresh(){clearTimeout(scheduleStatusRefresh.timer);let now=Date.now(),next=Math.min(...db.bookings.filter(booking=>booking.status!=="completed"&&bookingEnd(booking)>now).map(booking=>bookingEnd(booking)));if(Number.isFinite(next))scheduleStatusRefresh.timer=setTimeout(()=>{let changed=refreshBookingStates();if(changed&&user())render();else scheduleStatusRefresh()},Math.max(250,next-Date.now()+80))}
-function fault(n){return db.faults.find(x=>x.deskNo===n&&x.status==="faulty")}
+function fault(n){return db.devices?.find(x=>x.number===n&&x.status==="faulty")||db.faults.find(x=>x.deskNo===n&&x.status==="faulty")}
 function at(n,d=date){return db.bookings.filter(x=>x.deskNo===n&&x.date===d)}
 /** Returns the single hourly value occupied by this reservation. */
 function bookingSlots(booking){return [+booking.hour]}
@@ -73,25 +69,19 @@ function bindDesks(mode){qa("[data-desk]").forEach(e=>e.onclick=()=>{let n=+e.da
 /** Shows the fixed two-second confirmation after a successful hourly booking. */
 function showBookingSuccess(durationMinutes){let overlay=q("#bookingOverlay"),reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;q("#bookingOverlayCopy").textContent=language==="en"?`Your ${durationMinutes}-minute reservation is ready`:`已为你保留 ${durationMinutes} 分钟`;if(reduce){dashStudent();toast("Reservation confirmed");return}overlay.hidden=false;overlay.setAttribute("aria-hidden","false");document.body.classList.add("booking-success");void overlay.offsetWidth;document.body.classList.add("booking-success-ready");setTimeout(()=>{overlay.hidden=true;overlay.setAttribute("aria-hidden","true");document.body.classList.remove("booking-success","booking-success-ready");dashStudent();toast("Reservation confirmed")},2000)}
 /** Validates every selected device immediately before storing the one-hour reservation. */
-function book(){if(!syncBookingRange().valid){toast("预约时间已开始或今日预约已结束。","error");dashStudent();return}if(!desks.size){toast("请至少选择一台设备。","error");return}for(let n of desks)if(fault(n)||conflict(n)){toast("选择中存在故障或已预约设备。","error");return}for(let n of desks)db.bookings.push({id:id("booking"),deskNo:n,date,hour:startHour,userId:user().id,userName:user().name,status:"reserved"});save();desks.clear();showBookingSuccess(60)}
 function records(a,cancel=false){return a.length?`<div class="records">${a.map(x=>`<div class="record"><div><b>#${String(x.deskNo).padStart(2,"0")} · ${fh(x.hour)}</b><small>${fd(x.date)}${x.userName?" · "+esc(x.userName):""}</small></div>${cancel?`<button class="secondary small-btn" data-cancel="${x.id}">${tr("取消")}</button>`:`<span class="tag">${tr("已预约")}</span>`}</div>`).join("")}</div>`:`<p class="empty">${tr("暂无记录。")}</p>`}
 function favorite(a,key,label){let counts={};a.forEach(x=>counts[x[key]]=(counts[x[key]]||0)+1);let top=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];return top?label(top[0],top[1]):tr("暂未形成")}
 function me(){head("MY PROFILE","我的");let mine=db.bookings.filter(x=>x.userId===user().id),todayMine=mine.filter(x=>x.date===today()).sort((a,b)=>a.hour-b.hour),future=mine.filter(x=>x.date>=today()).sort((a,b)=>(a.date+a.hour).localeCompare(b.date+b.hour)),favoriteDesk=favorite(mine,"deskNo",(n,c)=>"#"+String(n).padStart(2,"0")+" · "+timesLabel(c)),favoriteHour=favorite(mine,"hour",(slot,c)=>fh(slot).split("–")[0]+" · "+timesLabel(c));q("#content").innerHTML=`<section class="profile-hero"><div class="profile-mark">${esc(user().name[0])}</div><div><h2>${esc(user().name)}</h2><p>${tr(admin()?"管理员":"学生")} · ${esc(user().loginId)}</p></div></section><section class="today-spotlight"><div><p class="eyebrow">${fd(today())}</p><h2>${todayMine.length?"今天的预约":"今天还没有预约"}</h2><p>${todayMine.length?todayMine.map(x=>"#"+String(x.deskNo).padStart(2,"0")+" · "+fh(x.hour)).join("　"):"选好设备和起止时间后，会显示在这里。"}</p></div><div class="today-number"><b>${todayMine.length}</b><span>${slotsLabel(todayMine.length)}</span></div>${todayMine.length?"":`<button data-go="dashboard" class="secondary small-btn">去预约</button>`}</section><div class="profile-grid"><section class="panel preference-panel"><h2>预约偏好</h2><p class="sub">根据你的实际预约自动汇总</p><div class="preference-list"><div><span>常用设备</span><b>${favoriteDesk}</b></div><div><span>常用时段</span><b>${favoriteHour}</b></div><div><span>未来预约</span><b>${slotsLabel(future.length)}</b></div></div></section><section class="panel my-bookings"><h2>我的预约</h2><p class="sub">取消后设备时段会立即释放。</p>${records(mine.slice().sort((a,b)=>(a.date+a.hour).localeCompare(b.date+b.hour)),true)}</section></div>`;go()}
-function cancelBind(){qa("[data-cancel]").forEach(b=>b.onclick=()=>{db.bookings=db.bookings.filter(x=>x.id!==b.dataset.cancel);save();toast("预约已取消。");render()})}
 /** Renders administrator metrics using the actual current full-hour slot. */
 function dashAdmin(){head("ADMIN / OPERATIONS","实验室总览");let t=db.bookings.filter(x=>x.date===today()),now=new Date(),nowSlot=now.getHours();q("#content").innerHTML=stats([["注册用户",db.users.length],["当前实验人数",t.filter(x=>bookingSlots(x).includes(nowSlot)&&x.status==="reserved").length,"cyan"],["今日预约时段",t.length],["故障设备",db.faults.filter(x=>x.status==="faulty").length,"warn"]])+`<div class="grid2"><section class="panel"><div class="section-head"><div><h2>今日设备使用</h2><p class="sub">${fd(today())}</p></div><button data-go="lab" class="secondary small-btn">设备管理</button></div>${records(t.slice(-8).reverse())}</section><section class="panel"><div class="section-head"><div><h2>待处理故障</h2><p class="sub">学生上报后由管理员确认</p></div><button data-go="faults" class="secondary small-btn">故障维护</button></div>${faultList(db.faults.filter(x=>x.status==="reported"))}</section></div><section class="panel" style="margin-top:1rem"><h2>本周使用趋势</h2><p class="sub">管理员可在“统计与导出”中下载管理文件。</p>${chart()}</section>`;go()}
 function lab(){head("ADMIN / DEVICE STATUS","设备状态维护");q("#content").innerHTML=`<div class="grid2"><section class="panel"><h2>40 台设备平面图</h2><p class="sub">点击设备可切换正常 / 故障；故障设备无法被学生预约。</p>${map("admin")}</section><aside class="panel"><h2>维护说明</h2><p class="helper">红色 ! 是故障设备。管理员可直接标记或恢复设备，学生上报会在故障维护中保留。</p><button id="refreshStatus" class="secondary wide">强制刷新状态</button><button id="report" class="secondary wide" style="margin-top:.6rem">录入故障记录</button></aside></div>`;bindDesks("admin");q("#refreshStatus").onclick=forceRefresh;q("#report").onclick=openModal;syncLanguage()}
-function forceRefresh(){let changed=refreshBookingStates();toast(changed?"设备状态已更新。":"设备状态已是最新。");lab()}
-function toggle(n){let f=fault(n);if(f){f.status="resolved";f.resolvedAt=new Date().toISOString();toast(language==="en"?`Device ${String(n).padStart(2,"0")} restored.`:`#${String(n).padStart(2,"0")} 已恢复。`)}else{db.faults.push({id:id("fault"),deskNo:n,description:"管理员标记为故障。",reporter:user().name,status:"faulty",createdAt:new Date().toISOString()});toast(language==="en"?`Device ${String(n).padStart(2,"0")} marked as faulty.`:`#${String(n).padStart(2,"0")} 已标记故障。`)}save();lab()}
 function users(){head("ADMIN / USERS","用户档案");q("#content").innerHTML=`<section class="panel"><h2>已注册用户</h2><p class="sub">注册角色、账号和累计预约时长。</p><div class="table-wrap"><table class="table"><thead><tr><th>姓名</th><th>身份</th><th>学号 / 工号</th><th>累计时长</th><th>账号操作</th></tr></thead><tbody>${db.users.map(x=>`<tr><td>${esc(x.name)}</td><td><span class="tag">${x.role==="admin"?"管理员":"学生"}</span></td><td>${esc(x.loginId)}</td><td>${durationLabel(db.bookings.filter(b=>b.userId===x.id))}</td><td>${x.role==="student"?`<button class="secondary small-btn danger-btn" data-remove-user="${x.id}">注销账号</button>`:"—"}</td></tr>`).join("")}</tbody></table></div></section>`;qa("[data-remove-user]").forEach(button=>button.onclick=()=>removeStudent(button.dataset.removeUser));syncLanguage()}
-function removeStudent(userId){let student=db.users.find(x=>x.id===userId);if(!student||student.role!=="student")return;if(!window.confirm(tr("确认注销该学生账号吗？其预约将被删除，此操作不可恢复。")))return;db.users=db.users.filter(x=>x.id!==userId);db.bookings=db.bookings.filter(x=>x.userId!==userId);save();toast("账号已注销。");users()}
 function reports(){head(admin()?"ADMIN / REPORTS":"STUDENT / HOURS",admin()?"统计与导出":"实验累计时间");if(!admin()){let a=db.bookings.filter(x=>x.userId===user().id),future=a.filter(x=>x.date>=today()).length;q("#content").innerHTML=stats([["累计实验时长",durationLabel(a),"cyan"],["未来预约",future],["已完成记录",Math.max(0,a.length-future)]]);return}q("#content").innerHTML=stats([["累计使用时段",db.bookings.length,"cyan"],["本周使用时段",week().reduce((s,x)=>s+x.count,0)],["可用设备",40-db.faults.filter(x=>x.status==="faulty").length],["故障设备",db.faults.filter(x=>x.status==="faulty").length,"warn"]])+`<div class="grid2"><section class="panel"><h2>一周使用情况</h2><p class="sub">按预约时段统计</p>${chart()}</section><section class="panel admin-export"><p class="eyebrow">管理员权限</p><h2>管理文件导出</h2><p class="helper">导出每日设备使用情况和故障维护记录。</p><button id="c2" class="secondary wide">下载 count.txt</button><button id="e2" class="secondary wide" style="margin-top:.6rem">下载 error.txt</button></section></div>`;q("#c2").onclick=countFile;q("#e2").onclick=errorFile}
 /** Returns the current Monday-through-Sunday week instead of seven future days. */
 function week(){let anchor=new Date(`${today()}T00:00:00`),offset=(anchor.getDay()+6)%7;anchor.setDate(anchor.getDate()-offset);return Array.from({length:7},(_,i)=>{let d=new Date(anchor);d.setDate(anchor.getDate()+i);let key=d.toLocaleDateString("en-CA");return {date:key,count:db.bookings.filter(x=>x.date===key&&x.status!=="cancelled").length}})}
 function chart(){let a=week(),m=Math.max(1,...a.map(x=>x.count));return `<div class="bars">${a.map(x=>`<div class="bar-col"><b>${x.count}</b><i class="bar" style="height:${Math.max(5,x.count/m*112)}px"></i><span>${fd(x.date).replace("日","")}</span></div>`).join("")}</div>`}
 function faults(){head(admin()?"ADMIN / FAULTS":"STUDENT / DEVICE REPORT",admin()?"故障维护":"设备故障上报");let a=admin()?db.faults.slice().reverse():db.faults.filter(x=>x.reporterId===user().id).reverse();q("#content").innerHTML=`<section class="panel"><div class="section-head"><div><h2>${admin()?"全部故障记录":"我的故障记录"}</h2><p class="sub">${admin()?"处理后设备会恢复可预约状态。":"提交后请等待管理员维护设备状态。"}</p></div><button id="report" class="secondary small-btn">上报故障</button></div>${faultList(a)}</section>`;q("#report").onclick=openModal;if(admin())qa("[data-fix]").forEach(b=>b.onclick=()=>fix(b.dataset.fix));syncLanguage()}
 function faultList(a){return a.length?`<div class="records">${a.map(x=>`<div class="record"><div><b>#${String(x.deskNo).padStart(2,"0")} · ${esc(systemFaultText(x.description))}</b><small>${esc(x.reporter||tr("管理员"))} · ${new Date(x.createdAt).toLocaleString(locale(),{hour12:false})}</small></div><div>${x.status==="resolved"?'<span class="tag ok">已处理</span>':x.status==="reported"?'<span class="tag">待处理</span>':'<span class="tag bad">故障中</span>'}${admin()&&x.status!=="resolved"?`<button class="secondary small-btn" data-fix="${x.id}">恢复</button>`:""}</div></div>`).join("")}</div>`:'<p class="empty">暂无故障记录。</p>'}
-function fix(i){let x=db.faults.find(x=>x.id===i);x.status="resolved";x.resolvedAt=new Date().toISOString();save();toast("故障已处理。");faults()}
 function openModal(){q("#faultDesk").innerHTML=DESKS.map(n=>`<option value="${n}">${deviceLabel(n)}</option>`).join("");q("#faultModal").showModal();syncLanguage()}
 function go(){qa("[data-go]").forEach(b=>b.onclick=()=>{page=b.dataset.go;render()});cancelBind()}
 function download(name,text){let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/plain;charset=utf-8"}));a.download=name;a.click();URL.revokeObjectURL(a.href);toast(language==="en"?`Downloaded ${name}`:`已下载 ${name}`)}
@@ -104,4 +94,155 @@ qa("[data-language]").forEach(button=>button.onclick=()=>setLanguage(button.data
 q("#registerForm").onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),loginId=f.get("loginId").trim(),name=f.get("name").trim();if(!name){toast("请输入姓名。","error");return}if(db.users.some(x=>x.loginId===loginId)){toast("该账号已注册，请直接登录。","error");return}let u={id:id("user"),name,loginId,password:f.get("password"),role:"student"};db.users.push(u);db.session=u.id;save();page="dashboard";toast("注册成功。");startSession()};
 q("#loginForm").onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),u=db.users.find(x=>x.loginId===f.get("loginId").trim()&&x.password===f.get("password"));if(!u){toast("账号或密码不正确。","error");return}db.session=u.id;save();page="dashboard";startSession()};
 q("#faultForm").onsubmit=e=>{e.preventDefault();let n=+q("#faultDesk").value;if(fault(n)){toast("该设备已处于故障状态。","error");return}db.faults.push({id:id("fault"),deskNo:n,description:q("#faultText").value.trim(),reporter:user().name,reporterId:user().id,status:admin()?"faulty":"reported",createdAt:new Date().toISOString()});save();e.target.reset();q("#faultModal").close();toast(admin()?"设备已标记故障。":"故障已上报。");render()};
-q("#closeModal").onclick=()=>q("#faultModal").close();q("#logout").onclick=()=>{db.session=null;save();desks.clear();render()};render();
+q("#closeModal").onclick=()=>q("#faultModal").close();q("#logout").onclick=()=>{db.session=null;save();desks.clear();render()};
+
+/** Maps a public student ID to an internal Auth email without exposing it in the UI. */
+function studentEmail(loginId){
+  let normalized=loginId.trim().toLowerCase();
+  if(!/^[a-z0-9._-]{2,20}$/.test(normalized))throw new Error("Student ID must use 2–20 letters, numbers, dots, hyphens, or underscores.");
+  return `${normalized}@lab.njupt.local`;
+}
+
+/** Normalises Supabase tables into the existing screen model. */
+function toCloudState(profile,profiles,devices,reservations,reports){
+  let users=profiles.map(item=>({id:item.id,name:item.display_name,loginId:item.login_id,role:item.role,active:item.active}));
+  let names=new Map(users.map(item=>[item.id,item.name]));
+  return {
+    users,
+    devices:devices.map(item=>({number:item.number,status:item.status})),
+    bookings:reservations.map(item=>({id:item.id,deskNo:item.device_number,date:item.reservation_date,hour:item.start_hour,userId:item.user_id,userName:names.get(item.user_id)||"Student",status:item.status})),
+    faults:reports.map(item=>({id:item.id,deskNo:item.device_number,description:item.description,reporter:names.get(item.reporter_id)||"Student",reporterId:item.reporter_id,status:item.status,createdAt:item.created_at,resolvedAt:item.resolved_at})),
+    session:profile.id
+  };
+}
+
+/** Loads the signed-in user's permitted cloud data; RLS controls every response. */
+async function refreshCloud(renderAfter=true){
+  let {data:{session}}=await supabase.auth.getSession();
+  if(!session){db={users:[],devices:[],bookings:[],faults:[],session:null};if(renderAfter)render();return false}
+  let {data:profile,error:profileError}=await supabase.from("profiles").select("id,login_id,display_name,role,active").eq("id",session.user.id).maybeSingle();
+  if(profileError||!profile){toast("Account profile is not ready. Please try again.","error");return false}
+  if(!profile.active){await supabase.auth.signOut();db={users:[],devices:[],bookings:[],faults:[],session:null};toast("This account has been deactivated.","error");if(renderAfter)render();return false}
+  let [devicesResult,reservationsResult,reportsResult,profilesResult]=await Promise.all([
+    supabase.from("devices").select("number,status").order("number"),
+    supabase.from("reservations").select("id,device_number,user_id,reservation_date,start_hour,status,created_at,cancelled_at"),
+    supabase.from("issue_reports").select("id,device_number,reporter_id,description,status,created_at,resolved_at"),
+    profile.role==="admin"?supabase.from("profiles").select("id,login_id,display_name,role,active").order("created_at"):Promise.resolve({data:[profile],error:null})
+  ]);
+  let failed=[devicesResult,reservationsResult,reportsResult,profilesResult].find(result=>result.error);
+  if(failed){toast(failed.error.message,"error");return false}
+  db=toCloudState(profile,profilesResult.data,devicesResult.data,reservationsResult.data,reportsResult.data);
+  refreshBookingStates();
+  if(renderAfter)render();
+  return true;
+}
+
+function cloudError(error){return error?.message||"The request could not be completed. Please try again."}
+
+/** Calls the atomic server function, which rejects a reservation race safely. */
+async function book(){
+  if(!syncBookingRange().valid){toast("预约时间已开始或今日预约已结束。","error");dashStudent();return}
+  if(!desks.size){toast("请至少选择一台设备。","error");return}
+  let button=q("#book");button.disabled=true;
+  let {error}=await supabase.rpc("reserve_hourly_devices",{requested_date:date,requested_hour:startHour,requested_devices:[...desks]});
+  if(error){button.disabled=false;toast(cloudError(error),"error");await refreshCloud();return}
+  desks.clear();
+  await refreshCloud(false);
+  showBookingSuccess(60);
+}
+
+async function cancelCloud(reservationId){
+  let {error}=await supabase.from("reservations").update({status:"cancelled",cancelled_at:new Date().toISOString()}).eq("id",reservationId);
+  if(error){toast(cloudError(error),"error");return}
+  toast("预约已取消。");
+  await refreshCloud();
+}
+
+function cancelBind(){qa("[data-cancel]").forEach(button=>button.onclick=()=>cancelCloud(button.dataset.cancel))}
+
+/** Administrators update the device row and retain an auditable issue record. */
+async function toggle(number){
+  let faulty=Boolean(fault(number)),next=faulty?"available":"faulty";
+  let {error:deviceError}=await supabase.from("devices").update({status:next,updated_by:user().id,updated_at:new Date().toISOString()}).eq("number",number);
+  if(deviceError){toast(cloudError(deviceError),"error");return}
+  if(faulty){
+    let {error}=await supabase.from("issue_reports").update({status:"resolved",resolved_at:new Date().toISOString(),resolved_by:user().id}).eq("device_number",number).in("status",["reported","faulty"]);
+    if(error)toast(cloudError(error),"error");
+  }else{
+    let {error}=await supabase.from("issue_reports").insert({device_number:number,reporter_id:user().id,description:"管理员标记为故障。",status:"faulty"});
+    if(error)toast(cloudError(error),"error");
+  }
+  await refreshCloud();
+  lab();
+}
+
+async function fix(issueId){
+  let issue=db.faults.find(item=>item.id===issueId);if(!issue)return;
+  let {error:issueError}=await supabase.from("issue_reports").update({status:"resolved",resolved_at:new Date().toISOString(),resolved_by:user().id}).eq("id",issueId);
+  if(issueError){toast(cloudError(issueError),"error");return}
+  let {error:deviceError}=await supabase.from("devices").update({status:"available",updated_by:user().id,updated_at:new Date().toISOString()}).eq("number",issue.deskNo);
+  if(deviceError){toast(cloudError(deviceError),"error");return}
+  toast("故障已处理。");await refreshCloud();faults();
+}
+
+async function forceRefresh(){await refreshCloud();toast("设备状态已更新。");lab()}
+
+async function removeStudent(userId){
+  let student=db.users.find(item=>item.id===userId);if(!student||student.role!=="student")return;
+  if(!window.confirm(tr("确认注销该学生账号吗？其预约将被删除，此操作不可恢复。")))return;
+  let {error}=await supabase.rpc("deactivate_student",{target_user:userId});
+  if(error){toast(cloudError(error),"error");return}
+  toast("账号已注销。");await refreshCloud();users();
+}
+
+async function submitCloudIssue(event){
+  event.preventDefault();
+  let {error}=await supabase.from("issue_reports").insert({device_number:+q("#faultDesk").value,reporter_id:user().id,description:q("#faultText").value.trim(),status:admin()?"faulty":"reported"});
+  if(error){toast(cloudError(error),"error");return}
+  q("#faultForm").reset();q("#faultModal").close();toast(admin()?"设备已标记故障。":"故障已上报。");await refreshCloud();render();
+}
+
+async function registerCloud(event){
+  event.preventDefault();
+  let form=new FormData(event.target),loginId=form.get("loginId").trim(),name=form.get("name").trim(),password=form.get("password");
+  if(!name){toast("请输入姓名。","error");return}
+  let email;
+  try{email=studentEmail(loginId)}catch(error){toast(error.message,"error");return}
+  let {data,error}=await supabase.auth.signUp({email,password,options:{data:{login_id:loginId,display_name:name}}});
+  if(error){toast(cloudError(error),"error");return}
+  if(!data.session){toast("Disable Confirm email in Supabase before student testing.","error");return}
+  await new Promise(resolve=>setTimeout(resolve,250));
+  if(await refreshCloud(false)){page="dashboard";toast("注册成功。");startSession()}
+}
+
+async function loginCloud(event){
+  event.preventDefault();
+  let form=new FormData(event.target),identity=form.get("loginId").trim(),password=form.get("password"),email;
+  try{email=identity.includes("@")?identity:studentEmail(identity)}catch(error){toast(error.message,"error");return}
+  let {error}=await supabase.auth.signInWithPassword({email,password});
+  if(error){toast("账号或密码不正确。","error");return}
+  if(await refreshCloud(false)){page="dashboard";startSession()}
+}
+
+async function logoutCloud(){await supabase.auth.signOut();desks.clear();await refreshCloud()}
+
+function subscribeCloud(){
+  let timer;
+  supabase.channel("lab-reservation-live")
+    .on("postgres_changes",{event:"*",schema:"public",table:"devices"},queue)
+    .on("postgres_changes",{event:"*",schema:"public",table:"reservations"},queue)
+    .on("postgres_changes",{event:"*",schema:"public",table:"issue_reports"},queue)
+    .subscribe();
+  function queue(){clearTimeout(timer);timer=setTimeout(()=>{if(!document.body.classList.contains("booking-success"))refreshCloud()},150)}
+}
+
+async function bootCloud(){
+  q("#registerForm").onsubmit=registerCloud;
+  q("#loginForm").onsubmit=loginCloud;
+  q("#faultForm").onsubmit=submitCloudIssue;
+  q("#logout").onclick=logoutCloud;
+  subscribeCloud();
+  await refreshCloud();
+}
+
+bootCloud();

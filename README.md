@@ -22,7 +22,7 @@
 
 ## 数据范围
 
-Web 本地演示模式不需要服务器，但仅保存当前浏览器的学生数据，不能在不同设备或浏览器间同步。配置 `backend/supabase/schema.sql` 所需的 Supabase 项目后，数据库唯一约束与原子预约函数才提供跨设备冲突控制。请勿在本地演示模式使用真实密码。
+Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql` 和 `backend/supabase/cloud-migration.sql`，再在 **Authentication → Providers → Email** 关闭 **Confirm email**。之后学生注册、管理员权限、设备状态、预约冲突和实时刷新均以共享数据库为准。Qt 客户端目前保留离线本地演示模式，尚未接入云端。
 
 ## 本地预览
 

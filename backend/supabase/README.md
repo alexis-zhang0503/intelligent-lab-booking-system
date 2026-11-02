@@ -8,6 +8,7 @@ This directory contains the database contract shared by the GitHub Pages client 
 2. Auth signup metadata creates **student** profiles automatically. The project maintainer creates an administrator in the Supabase Dashboard, then promotes only that profile to `admin` in the protected SQL editor. Follow [ADMIN_ACCOUNT_RUNBOOK.md](ADMIN_ACCOUNT_RUNBOOK.md). Do not expose a service-role key in a browser or Qt executable.
 3. Place only the project URL and publishable key in each client configuration.
 4. Enable Realtime for `devices`, `reservations`, and `issue_reports`.
+5. Run `cloud-migration.sql` after `schema.sql`. It enables secure student cancellation and administrator-led student deactivation for the cloud Web client.
 
 ## Security model
 
@@ -18,4 +19,4 @@ This directory contains the database contract shared by the GitHub Pages client 
 
 ## Development boundary
 
-The existing web page continues to offer browser-local demo data until project credentials are configured. Local demo mode is not multi-device realtime and must not be presented as the shared backend.
+The Web client is configured for the project’s public URL and publishable key. In **Authentication → Providers → Email**, turn off **Confirm email** before student testing: students sign in with a student ID, which the client safely maps to an internal course-only Auth email. Administrator accounts continue to use their real email address. The Qt client remains an offline local demonstration client until its network adapter is added.
