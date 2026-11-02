@@ -174,7 +174,6 @@ header h1 { font-size: clamp(2.4rem, 4.5vw, 4rem); letter-spacing: -.055em; }
 
 .booking-intro { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding: .3rem 0 2.5rem; }
 .booking-intro h2 { max-width: 700px; margin: 0; color: var(--ink); font-size: clamp(2.35rem, 4.7vw, 4.45rem); font-weight: 500; letter-spacing: -.06em; line-height: 1.08; }
-.booking-intro > div > p:not(.eyebrow) { max-width: 460px; margin: .9rem 0 0; color: var(--subtle); font-size: .96rem; line-height: 1.65; }
 .booking-summary { display: flex; gap: 1.5rem; margin-top: 1.4rem; color: var(--subtle); font-size: .77rem; }
 .booking-summary b { margin-right: .25rem; color: var(--ink); font-size: 1.1rem; font-weight: 600; }
 .booking-date { display: grid; flex: 0 0 auto; gap: .45rem; min-width: 165px; padding: .85rem 1rem; border: 1px solid #00000012; border-radius: 16px; background: #fff; color: var(--subtle); font-size: .72rem; }
@@ -189,10 +188,9 @@ header h1 { font-size: clamp(2.4rem, 4.5vw, 4rem); letter-spacing: -.055em; }
 .booking-flow { padding: 1.25rem; }
 .booking-flow > .panel { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
 .booking-flow .times { margin-top: .75rem; }
-.booking-flow .flow-line { height: 1px; margin: 1.35rem 0; background: var(--line); }
-.booking-flow h3 { margin: 0; font-size: 1.05rem; }
-.booking-flow .selection { min-height: 94px; margin: .85rem 0; padding: .8rem; background: #f1f7ff; }
-.booking-flow .primary { width: 100%; margin-top: .8rem; }
+.booking-flow .selection { margin: 1rem 0 .75rem; padding: .72rem .8rem; background: #f1f7ff; }
+.booking-flow .compact-selection { min-height: 48px; line-height: 1.45; }
+.booking-flow .primary { width: 100%; margin-top: 0; }
 .schedule-panel { margin-top: 1.25rem; }
 
 body.launching { overflow: hidden; }
