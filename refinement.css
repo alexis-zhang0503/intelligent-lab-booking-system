@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@600;700;800&family=Noto+Serif+SC:wght@700;800;900&family=Space+Mono:wght@400;700&family=Syncopate:wght@700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@600;700;800&family=Space+Mono:wght@400;700&family=Syncopate:wght@700&family=ZCOOL+XiaoWei&display=swap');
 
 @media (max-width: 700px) {
   nav {
@@ -124,7 +124,8 @@ h1, h2, h3, .stat b, .profile-feature b {
 .auth-brand span { margin-left: .45rem; color: var(--subtle); font-weight: 500; }
 .auth-brand img, .logo img { width: 22px; height: 22px; margin-right: .42rem; }
 .intro { padding: 0; }
-.intro h1 { max-width: 720px; margin: -.08em 0; padding-block: .16em; color: transparent; background: linear-gradient(105deg, #071b34 0%, #0066cc 31%, #7b61ff 54%, #00a6a6 76%, #071b34 100%); background-size: 240% 100%; -webkit-background-clip: text; background-clip: text; font-family: "Syncopate", "Noto Serif SC", "PingFang SC", serif; font-size: clamp(3rem, 5vw, 4.85rem); font-weight: 700; letter-spacing: -.07em; line-height: 1.16; text-wrap: balance; animation: login-spectrum 12s linear infinite; }
+.intro h1 { max-width: 720px; margin: 0; padding-block: .18em; color: transparent; background: linear-gradient(105deg, #071b34 0%, #0066cc 31%, #7b61ff 54%, #00a6a6 76%, #071b34 100%); background-size: 240% 100%; -webkit-background-clip: text; background-clip: text; font-family: "Syncopate", "Noto Sans SC", "PingFang SC", sans-serif; font-size: clamp(2.8rem, 4.25vw, 4.35rem); font-weight: 700; letter-spacing: -.065em; line-height: 1.2; text-wrap: balance; animation: login-spectrum 12s linear infinite; }
+html[lang="zh-CN"] .intro h1 { font-family: "ZCOOL XiaoWei", "Noto Sans SC", "PingFang SC", serif; font-size: clamp(3.35rem, 5.25vw, 5.1rem); font-weight: 400; letter-spacing: .02em; line-height: 1.12; }
 .intro > p:not(.eyebrow) { max-width: 410px; margin-top: 1.35rem; font-family: "Space Mono", "Noto Sans SC", "PingFang SC", monospace; font-size: .94rem; letter-spacing: -.02em; }
 .intro .eyebrow { font-family: "Space Mono", "Noto Sans SC", monospace; letter-spacing: .12em; }
 .auth-card { padding: 1.75rem; border-color: #0000000d; border-radius: 20px; background: #fff; box-shadow: 0 10px 30px #0000000d; backdrop-filter: none; }
@@ -515,12 +516,13 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
 }
 
 @media (max-width: 700px) {
-  .auth { width: 100vw; max-width: 100vw; overflow: hidden; }
+  .auth { width: 100vw; max-width: 100vw; overflow-x: clip; }
   .auth, .intro, .auth-card, .tabs, .tab { min-width: 0; }
   .intro, .auth-card { width: calc(100vw - 2.5rem); }
   .auth-card { max-width: none; }
   .tab { padding-right: .5rem; padding-left: .5rem; white-space: normal; }
-  .intro h1 { max-width: 100%; font-size: clamp(2.35rem, 10vw, 2.9rem); letter-spacing: -.055em; overflow-wrap: anywhere; }
+  .intro h1 { max-width: 100%; font-size: clamp(2.2rem, 9vw, 2.65rem); letter-spacing: -.055em; overflow-wrap: anywhere; }
+  html[lang="zh-CN"] .intro h1 { font-size: clamp(2.75rem, 11vw, 3.35rem); letter-spacing: .01em; }
   .intro > p:not(.eyebrow) { max-width: 100%; }
   .device-overview, .maintenance-hero { align-items: flex-start; flex-direction: column; padding: 1.3rem; }
   .device-overview-metric { text-align: left; }
