@@ -333,6 +333,11 @@ nav::-webkit-scrollbar { display: none; }
 .profile { order: 4; }
 .link-btn { order: 5; }
 
+.admin-only { display: none; }
+body[data-role="admin"] .admin-only { display: block; }
+#auth .auth-link { display: block; margin: .85rem auto 0; color: var(--blue); font-size: .78rem; }
+#inviteResult { margin-top: 1rem; }
+
 .desk:active:not(:disabled) { transform: none; }
 .desk.selected { transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease; }
 

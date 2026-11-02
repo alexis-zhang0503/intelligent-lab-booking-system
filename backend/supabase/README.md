@@ -9,11 +9,13 @@ This directory contains the database contract shared by the GitHub Pages client 
 3. Place only the project URL and publishable key in each client configuration.
 4. Enable Realtime for `devices`, `reservations`, and `issue_reports`.
 5. Run `cloud-migration.sql` after `schema.sql`. It enables secure student cancellation and administrator-led student deactivation for the cloud Web client.
+6. Run `admin-invite-migration.sql` to enable one-time administrator invitations generated inside the Web administrator interface.
 
 ## Security model
 
 - Public registration creates an Auth account whose trigger creates a **student** profile only.
 - An administrator is seeded and promoted only by the project maintainer.
+- An existing administrator can generate a one-time invitation for a new administrator. The generated code is shown once, expires within 30 days, and is consumed inside the Auth profile trigger.
 - `reserve_hourly_devices` performs the final reservation check in one database transaction.
 - The unique index on `(device_number, reservation_date, start_hour)` prevents two clients from holding the same one-hour slot.
 

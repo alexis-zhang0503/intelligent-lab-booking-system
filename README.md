@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 学生公开注册；管理员由项目维护者在 Supabase 后台预置并开通；
+- 学生公开注册；首个管理员由项目维护者开通，后续管理员使用现有管理员生成的一次性邀请码注册；
 - 40 台设备、08:00–17:00 共 9 个一小时时段；
 - 学生多设备、多时段预约与取消，冲突时段禁止重复预约；
 - 学生故障上报，管理员标记、恢复设备并注销学生账号；
@@ -22,7 +22,7 @@
 
 ## 数据范围
 
-Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql` 和 `backend/supabase/cloud-migration.sql`，再在 **Authentication → Providers → Email** 关闭 **Confirm email**。之后学生注册、管理员权限、设备状态、预约冲突和实时刷新均以共享数据库为准。Qt 客户端目前保留离线本地演示模式，尚未接入云端。
+Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`backend/supabase/cloud-migration.sql` 和 `backend/supabase/admin-invite-migration.sql`，再在 **Authentication → Providers → Email** 关闭 **Confirm email**。之后学生注册、管理员权限、设备状态、预约冲突和实时刷新均以共享数据库为准。Qt 客户端目前保留离线本地演示模式，尚未接入云端。
 
 ## 本地预览
 

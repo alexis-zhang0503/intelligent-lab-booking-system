@@ -6,6 +6,7 @@ const LANGKEY="lab-booking-language";
 const EN={"实验室预约":"Lab Reservation","把时间留给探索":"Make time for discovery","选定设备，约好时间。把注意力留给实验本身。":"Choose a device and time. Leave your attention for the work.","登录":"Sign in","注册":"Create account","开始预约":"Start a reservation","登录后，设备、时段和你的记录，都在这里。":"Your devices, times, and records are all here.","学号 / 工号":"Student / staff ID","密码":"Password","登录并继续":"Sign in and continue","创建账号":"Create your account","管理员和学生均通过注册获得账号。":"Students and administrators both register here.","姓名":"Name","身份":"Role","学生":"Student","管理员":"Administrator","注册并进入":"Create account and enter","退出":"Sign out","实验室管理":"Lab Operations","实验室总览":"Lab Overview","总览":"Overview","设备":"Devices","用户":"Users","统计":"Reports","故障":"Issues","预约":"Reserve","时长":"Hours","我的":"Me","预约流程":"Reservation flow","三步完成":"Three steps","选择设备":"Choose a device","设置时间":"Set the time","确认预约":"Confirm reservation","台实验设备":"lab devices","我的预约":"My reservations","实验室平面图":"Lab floor plan","点击空闲设备，可同时选择多个位置":"Select any available device. Multiple devices are supported.","预约日期":"Reservation date","空闲":"Available","已预约":"Reserved","故障设备":"Faulty devices","已选择":"Selected","预约时间":"Reservation time","设置开始与结束时间":"Set a start and end time","开始":"Start","结束":"End","至":"to","尚未选择设备":"No device selected","确认预约 →":"Confirm reservation →","实验室状态":"Lab status","台设备可预约":"devices available","报告设备故障":"Report a device issue","近期预约":"Recent reservations","完整预约记录已合并至“我的”":"Your complete reservation history is in Me.","在我的中查看":"View in Me","暂无记录。":"No records yet.","我的":"Me","今天的预约":"Today's reservations","今天还没有预约":"Nothing reserved for today","选好设备和起止时间后，会显示在这里。":"Choose a device and time, and it will appear here.","个预约时段":"reserved hours","去预约":"Reserve now","预约偏好":"Reservation preferences","根据你的实际预约自动汇总":"Automatically summarised from your reservations.","常用设备":"Most used device","常用时段":"Most used time","未来预约":"Upcoming reservations","取消后设备时段会立即释放。":"Cancelling releases the device and time immediately.","取消":"Cancel","注册用户":"Registered users","当前实验人数":"Current lab users","今日预约时段":"Reserved hours today","今日设备使用":"Today's device use","设备管理":"Manage devices","待处理故障":"Open issues","学生上报后由管理员确认":"Student reports are confirmed by an administrator.","故障维护":"Issue maintenance","本周使用趋势":"Weekly usage","管理员可在“统计与导出”中下载管理文件。":"Administrative files are available in Reports.","设备状态维护":"Device status","40 台设备平面图":"40-device floor plan","点击设备可切换正常 / 故障；故障设备无法被学生预约。":"Select a device to mark it available or faulty. Faulty devices cannot be reserved.","维护说明":"Maintenance notes","红色 ! 是故障设备。管理员可直接标记或恢复设备，学生上报会在故障维护中保留。":"A red ! marks a faulty device. Administrators can mark or restore devices here.","录入故障记录":"Add an issue record","用户档案":"User profiles","已注册用户":"Registered users","注册角色、账号和累计预约时长。":"Role, account, and total reserved hours.","累计时长":"Total hours","统计与导出":"Reports and exports","实验累计时间":"Lab hours","累计实验时长":"Total lab hours","已完成记录":"Completed records","时长明细":"Hours detail","每个已预约的一小时设备时段累计为一小时。":"Each reserved device hour counts as one hour.","累计使用时段":"Total reserved hours","本周使用时段":"Reserved hours this week","可用设备":"Available devices","一周使用情况":"Weekly usage","按预约时段统计":"By reserved hour","管理员权限":"Administrator access","管理文件导出":"Export management files","导出每日设备使用情况和故障维护记录。":"Export daily device use and issue-maintenance records.","下载 count.txt":"Download count.txt","下载 error.txt":"Download error.txt","设备故障上报":"Device issue report","全部故障记录":"All issue records","我的故障记录":"My issue reports","处理后设备会恢复可预约状态。":"When resolved, devices become available again.","提交后请等待管理员维护设备状态。":"After submitting, please wait for an administrator to update the device.","上报故障":"Report an issue","已处理":"Resolved","待处理":"Open","故障中":"Faulty","恢复":"Restore","电脑编号":"Device number","故障描述":"Issue description","例如：显示器无信号，无法开机":"For example: the monitor has no signal or the device will not start.","提交故障记录":"Submit issue report","关闭":"Close","正在进入实验室":"Entering the lab","预约已确认":"Reservation confirmed","设备与时间已为你保留":"Your device and time are reserved"};
 Object.assign(EN,{"强制刷新状态":"Force refresh status","设备状态已更新。":"Device status updated.","设备状态已是最新。":"Device status is already current.","请至少选择一台设备。":"Select at least one device.","选择中存在故障或已预约设备。":"Your selection includes a faulty or reserved device.","NJUPT · 实验室预约":"NJUPT · Lab Reservation","NJUPT · 实验室管理":"NJUPT · Lab Operations","选择设备与起止时间　剩下的留给实验本身":"Choose a device and time. Leave the rest to the experiment.","暂无故障记录。":"No issue records yet.","预约时间已开始或今日预约已结束。":"This time has already started, or booking for today has closed.","管理员标记为故障。":"Marked faulty by an administrator.","管理员":"Administrator","故障已处理。":"Issue resolved.","设备已处于故障状态。":"This device is already marked as faulty.","故障已上报。":"Issue report submitted.","注册成功。":"Account created.","账号或密码不正确。":"Incorrect ID or password.","该账号已注册，请直接登录。":"This ID is already registered. Please sign in.","已下载 ":"Downloaded ","设备":"Device","设备总数：40 台":"Total devices: 40","开放时段：08:00-17:00（每 30 分钟）":"Hours: 08:00–17:00 (30-minute intervals)","智能实验室预约系统 - 每日使用情况统计":"Intelligent Lab Reservation System - Daily Usage","智能实验室预约系统 - 设备故障记录":"Intelligent Lab Reservation System - Device Issues","状态：":"Status: ","上报人：":"Reported by: ","描述：":"Description: ","账号操作":"Account action","注销账号":"Deactivate account","账号已注销。":"Account deactivated.","确认注销该学生账号吗？其预约将被删除，此操作不可恢复。":"Deactivate this student account? Their reservations will be deleted. This cannot be undone.","暂未形成":"Not established yet","预约已取消。":"Reservation cancelled.","今日预约已结束":"Booking closed for today","请选择未来日期继续预约":"Choose a future date to continue","智能实验室预约系统":"Intelligent Lab Reservation System","该设备已处于故障状态。":"This device is already marked as faulty.","每个已预约的半小时设备时段累计为半小时。":"Each reserved 30-minute device slot counts as half an hour."});
 Object.assign(EN,{"开放时段：08:00-17:00（每小时）":"Hours: 08:00–17:00 (hourly)","每个已预约的一小时设备时段累计为一小时。":"Each reserved device hour counts as one hour.","创建学生账号":"Create a student account","学生可直接注册。管理员账号由项目维护者在后台开通。":"Students can register directly. Administrator accounts are provisioned by the project maintainer.","学号":"Student ID","学号 / 管理员邮箱":"Student ID / administrator email"});
+Object.assign(EN,{"学生可直接注册。管理员账号需使用邀请码。":"Students can register directly. Administrator accounts require an invitation code.","使用邀请码注册管理员":"Register an administrator with an invitation","管理员注册":"Administrator registration","输入管理员邀请码后即可创建管理员账号":"Enter an administrator invitation code to create an administrator account","管理员邮箱":"Administrator email","管理员邀请码":"Administrator invitation code","注册管理员并进入":"Create administrator account and enter","返回学生注册":"Back to student registration","生成管理员邀请码":"Generate administrator invitation","邀请码仅显示一次。请通过可信方式发送给新管理员":"The code is shown once. Send it to the new administrator through a trusted channel.","有效期":"Valid for","1 天":"1 day","7 天":"7 days","30 天":"30 days","生成邀请码":"Generate invitation","邀请码":"Invitation code","复制邀请码":"Copy invitation code","邀请码已复制。":"Invitation code copied."});
 const ZH=Object.fromEntries(Object.entries(EN).map(([zh,en])=>[en,zh]));
 let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9;
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
@@ -88,7 +89,7 @@ function download(name,text){let a=document.createElement("a");a.href=URL.create
 /** Downloads one daily count.txt report using nine assignment-defined hourly sections. */
 function countFile(){let en=language==="en",out=[en?"Intelligent Lab Reservation System - Daily Usage":"智能实验室预约系统 - 每日使用情况统计",en?"Total devices: 40":"设备总数：40 台",en?"Hours: 08:00–17:00 (hourly)":"开放时段：08:00-17:00（每小时）",""];let x={date:today(),count:db.bookings.filter(b=>b.date===today()&&b.status!=="cancelled").length};out.push(en?`${x.date} (${fd(x.date)}): ${x.count} reservations`:`${x.date}（${fd(x.date)}）：${x.count} 人次`);SLOTS.forEach(slot=>{let a=db.bookings.filter(b=>b.date===x.date&&bookingSlots(b).includes(slot)&&b.status!=="cancelled"),names=a.map(b=>`#${String(b.deskNo).padStart(2,"0")} ${b.userName}`).join(en?"; ":"；");out.push(en?`  ${fh(slot)}: ${a.length} reservation${a.length===1?"":"s"}${a.length?` (${names})`:""}`:`  ${fh(slot)}：${a.length} 人次${a.length?`（${names}）`:""}`)});download("count.txt",out.join("\\n"))}
 function errorFile(){let en=language==="en",out=[en?"Intelligent Lab Reservation System - Device Issues":"智能实验室预约系统 - 设备故障记录",""];if(!db.faults.length)out.push(en?"No issue records yet.":"暂无故障记录。");db.faults.forEach((x,i)=>{let state=x.status==="resolved"?tr("已处理"):x.status==="reported"?tr("待处理"):tr("故障中");out.push(en?`${i+1}. Device #${String(x.deskNo).padStart(2,"0")} | Status: ${state} | Reported by: ${x.reporter||tr("管理员")}\n   Description: ${systemFaultText(x.description)}`:`${i+1}. 设备 #${String(x.deskNo).padStart(2,"0")} | 状态：${state} | 上报人：${x.reporter||tr("管理员")}\n   描述：${x.description}`)});download("error.txt",out.join("\\n"))}
-qa("[data-tab]").forEach(b=>b.onclick=()=>{let r=b.dataset.tab==="register";qa("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));q("#loginForm").hidden=r;q("#registerForm").hidden=!r});
+qa("[data-tab]").forEach(b=>b.onclick=()=>{let r=b.dataset.tab==="register";qa("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));q("#loginForm").hidden=r;q("#registerForm").hidden=!r;q("#adminRegisterForm").hidden=true});
 qa("[data-language]").forEach(button=>button.onclick=()=>setLanguage(button.dataset.language));
 /** Public registration always creates a student; administrator roles never come from this form. */
 q("#registerForm").onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),loginId=f.get("loginId").trim(),name=f.get("name").trim();if(!name){toast("请输入姓名。","error");return}if(db.users.some(x=>x.loginId===loginId)){toast("该账号已注册，请直接登录。","error");return}let u={id:id("user"),name,loginId,password:f.get("password"),role:"student"};db.users.push(u);db.session=u.id;save();page="dashboard";toast("注册成功。");startSession()};
@@ -215,6 +216,45 @@ async function registerCloud(event){
   if(await refreshCloud(false)){page="dashboard";toast("注册成功。");startSession()}
 }
 
+/** Switches between the ordinary student and invitation-only administrator forms. */
+function showAuthForm(form){
+  q("#loginForm").hidden=form!=="login";
+  q("#registerForm").hidden=form!=="student";
+  q("#adminRegisterForm").hidden=form!=="admin";
+  qa("[data-tab]").forEach(button=>button.classList.toggle("active",button.dataset.tab===(form==="login"?"login":"register")));
+  syncLanguage();
+}
+
+/** Signs up an administrator only when the database trigger accepts the supplied one-time code. */
+async function registerAdministrator(event){
+  event.preventDefault();
+  let form=new FormData(event.target),name=form.get("name").trim(),email=form.get("email").trim().toLowerCase(),password=form.get("password"),inviteCode=form.get("inviteCode").trim().toUpperCase();
+  if(!name||!email||!inviteCode){toast("Complete every field to continue.","error");return}
+  let {data,error}=await supabase.auth.signUp({email,password,options:{data:{login_id:email,display_name:name,admin_invite_code:inviteCode}}});
+  if(error){toast(cloudError(error),"error");return}
+  if(!data.session){toast("Disable Confirm email in Supabase before testing.","error");return}
+  await new Promise(resolve=>setTimeout(resolve,250));
+  if(await refreshCloud(false)){
+    if(!admin()){await supabase.auth.signOut();toast("The invitation was not accepted.","error");return}
+    page="dashboard";toast("Administrator account created.");startSession();
+  }
+}
+
+/** Generates one time-limited code through the administrator-only database function. */
+async function createAdministratorInvite(event){
+  event.preventDefault();
+  let days=Number(q("#inviteDays").value),expiry=new Date();expiry.setDate(expiry.getDate()+days);
+  let {data,error}=await supabase.rpc("create_admin_invite",{invite_expires_at:expiry.toISOString()});
+  if(error){toast(cloudError(error),"error");return}
+  q("#inviteCodeOutput").value=data[0].invite_code;
+  q("#inviteResult").hidden=false;
+}
+
+function openInviteDialog(){q("#inviteResult").hidden=true;q("#inviteModal").showModal()}
+async function copyInvitationCode(){
+  try{await navigator.clipboard.writeText(q("#inviteCodeOutput").value);toast("邀请码已复制。")}catch{q("#inviteCodeOutput").select()}
+}
+
 async function loginCloud(event){
   event.preventDefault();
   let form=new FormData(event.target),identity=form.get("loginId").trim(),password=form.get("password"),email;
@@ -238,9 +278,16 @@ function subscribeCloud(){
 
 async function bootCloud(){
   q("#registerForm").onsubmit=registerCloud;
+  q("#adminRegisterForm").onsubmit=registerAdministrator;
   q("#loginForm").onsubmit=loginCloud;
   q("#faultForm").onsubmit=submitCloudIssue;
   q("#logout").onclick=logoutCloud;
+  q("#showAdminRegister").onclick=()=>showAuthForm("admin");
+  q("#showStudentRegister").onclick=()=>showAuthForm("student");
+  q("#openInvite").onclick=openInviteDialog;
+  q("#closeInviteModal").onclick=()=>q("#inviteModal").close();
+  q("#inviteForm").onsubmit=createAdministratorInvite;
+  q("#copyInviteCode").onclick=copyInvitationCode;
   subscribeCloud();
   await refreshCloud();
 }
