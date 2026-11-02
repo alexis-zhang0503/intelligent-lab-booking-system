@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,600;0,700;1,600&family=ZCOOL+QingKe+HuangYou&display=swap');
+
 @media (max-width: 700px) {
   nav {
     scroll-snap-type: x proximity;
@@ -120,7 +122,7 @@ h1, h2, h3, .stat b, .profile-feature b {
 .auth-brand span { margin-left: .45rem; color: var(--subtle); font-weight: 500; }
 .auth-brand img, .logo img { width: 22px; height: 22px; margin-right: .42rem; }
 .intro { padding: 0; }
-.intro h1 { max-width: 720px; font-size: clamp(3.25rem, 5.7vw, 5.45rem); font-weight: 500; letter-spacing: -.045em; line-height: 1.08; }
+.intro h1 { max-width: 720px; color: transparent; background: linear-gradient(108deg, #071b34 4%, #075eb0 48%, #1d1d1f 96%); -webkit-background-clip: text; background-clip: text; font-family: "Exo 2", "ZCOOL QingKe HuangYou", "PingFang SC", sans-serif; font-size: clamp(3.25rem, 5.7vw, 5.45rem); font-weight: 600; letter-spacing: -.055em; line-height: 1.02; text-wrap: balance; text-shadow: 0 1px 0 #ffffffb3; }
 .intro > p:not(.eyebrow) { max-width: 410px; margin-top: 1.35rem; font-size: 1.12rem; }
 .auth-card { padding: 1.75rem; border-color: #0000000d; border-radius: 20px; background: #fff; box-shadow: 0 10px 30px #0000000d; backdrop-filter: none; }
 .tabs { margin-bottom: 1.5rem; }
@@ -149,7 +151,7 @@ header h1 { font-size: clamp(2.4rem, 4.5vw, 4rem); letter-spacing: -.055em; }
 .stat { min-height: 122px; padding: 1.2rem; }
 .stat span { font-size: .78rem; }
 .booking, .profile-grid { gap: 1.25rem; }
-.booking { grid-template-columns: minmax(0, 1fr) 270px; }
+.booking { grid-template-columns: minmax(0, 1fr) 330px; }
 .panel { padding: 1.35rem; }
 .panel h2, .panel h3 { font-size: 1.08rem; }
 .side-select { gap: .85rem; }
@@ -299,10 +301,10 @@ nav::-webkit-scrollbar { display: none; }
 .time-picker { display: grid; gap: .35rem; }
 .time-picker h3 { margin: 0; font-size: 1.05rem; }
 .time-picker .sub { margin: 0 0 .8rem; }
-.time-range { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: end; gap: .45rem; }
+.time-range { display: grid; grid-template-columns: minmax(120px,1fr) auto minmax(120px,1fr); align-items: end; gap: .5rem; }
 .time-range label { gap: .32rem; color: var(--subtle); font-size: .68rem; }
 .time-range label span { padding-left: .1rem; }
-.time-range select { min-height: 42px; padding: .55rem .5rem; border-radius: 11px; color: var(--ink); font-size: .8rem; font-weight: 600; }
+.time-range select { min-width: 120px; min-height: 42px; padding: .55rem; border-radius: 11px; color: var(--ink); font-size: .8rem; font-weight: 600; }
 .time-range > i { padding-bottom: .62rem; color: var(--subtle); font-style: normal; font-size: .72rem; }
 .booking-flow .selection { margin: 1rem 0 .75rem; }
 
@@ -459,14 +461,7 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
 .maintenance-metrics div { display: grid; min-width: 74px; }
 .maintenance-metrics b { font-size: 2.25rem; line-height: 1; letter-spacing: -.065em; }
 .maintenance-metrics span { margin-top: .35rem; color: var(--subtle); font-size: .74rem; }
-.maintenance-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: 1.25rem; align-items: start; }
-.issue-context { position: sticky; top: 74px; background: #1d1d1f; color: #fff; }
-.issue-context .eyebrow { color: #89c3ff; }
-.issue-context h2 { font-size: 1.5rem; }
-.issue-context p { margin: .7rem 0 1.3rem; color: #c7c7cc; font-size: .84rem; line-height: 1.6; }
-.issue-context > div { display: grid; gap: .35rem; padding-top: 1rem; border-top: 1px solid #ffffff2e; }
-.issue-context span { color: #a1a1a6; font-size: .72rem; }
-.issue-context b { font-size: .84rem; line-height: 1.5; }
+.issue-inbox-wide { width: 100%; }
 .issue-list { display: grid; gap: .8rem; }
 .issue-card { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: start; gap: .85rem; padding: 1rem; border: 1px solid #0000000d; border-radius: 16px; background: #fbfbfd; transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s ease, border-color .2s ease; }
 .issue-card:hover { transform: translateY(-1px); border-color: #0000001a; box-shadow: 0 9px 18px #192d410d; }
@@ -508,12 +503,18 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
 .timeline-event small { display: block; margin-top: .5rem; color: var(--subtle); font-size: .72rem; }
 
 @media (max-width: 900px) {
-  .device-layout, .maintenance-layout { grid-template-columns: 1fr; }
+  .device-layout { grid-template-columns: 1fr; }
   .device-current { max-width: none; }
-  .issue-context { position: static; }
 }
 
 @media (max-width: 700px) {
+  .auth { width: 100vw; max-width: 100vw; overflow: hidden; }
+  .auth, .intro, .auth-card, .tabs, .tab { min-width: 0; }
+  .intro, .auth-card { width: calc(100vw - 2.5rem); }
+  .auth-card { max-width: none; }
+  .tab { padding-right: .5rem; padding-left: .5rem; white-space: normal; }
+  .intro h1 { max-width: 100%; font-size: clamp(2.35rem, 10vw, 2.9rem); letter-spacing: -.055em; overflow-wrap: anywhere; }
+  .intro > p:not(.eyebrow) { max-width: 100%; }
   .device-overview, .maintenance-hero { align-items: flex-start; flex-direction: column; padding: 1.3rem; }
   .device-overview-metric { text-align: left; }
   .device-plan { min-height: 0; padding: 1.1rem; }
@@ -527,4 +528,7 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
   .issue-resolve { grid-column: auto; justify-self: start; }
   .issue-body footer { display: grid; gap: .3rem; }
   .issue-detail { padding: 1.2rem; }
+  .time-range { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .75rem; }
+  .time-range > i { display: none; }
+  .time-range select { min-width: 0; width: 100%; }
 }
