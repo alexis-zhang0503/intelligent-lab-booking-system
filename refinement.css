@@ -336,6 +336,15 @@ nav::-webkit-scrollbar { display: none; }
 .desk:active:not(:disabled) { transform: none; }
 .desk.selected { transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease; }
 
+/* Student seat states use both full-tile color and disabled behavior, never a tiny glyph alone. */
+.lab-panel .desk:not(.unavailable):not(.selected) { border-color: #d6eadd; background: #f6fbf8; }
+.lab-panel .desk:not(.unavailable):not(.selected) i { color: #249a60; }
+.lab-panel .desk.unavailable { opacity: 1; border-color: #d1d1d6; color: #86868b; background: #e9e9ed; box-shadow: none; cursor: not-allowed; }
+.lab-panel .desk.unavailable i { color: #8e8e93; }
+.lab-panel .desk.unavailable:hover { border-color: #d1d1d6; background: #e9e9ed; transform: none; box-shadow: none; }
+.lab-panel .desk.selected { border-color: #7db9f5; background: #eaf4ff; }
+.legend .occ { background: #8e8e93; }
+
 .time-check { display: flex; align-items: center; gap: .65rem; margin-top: .9rem; padding: .75rem .8rem; border: 1px solid #cbe4ff; border-radius: 14px; color: #075eb0; background: #f3f8ff; }
 .time-check i { width: .55rem; height: .55rem; flex: 0 0 auto; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px currentColor; opacity: .2; }
 .time-check b, .time-check span { display: block; }
