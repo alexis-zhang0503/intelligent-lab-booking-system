@@ -32,9 +32,9 @@ begin
     raise exception 'Invitation expiry must be within the next 30 days';
   end if;
 
-  generated_code := 'NJUPT-' || upper(encode(gen_random_bytes(6), 'hex'));
+  generated_code := 'NJUPT-' || upper(encode(extensions.gen_random_bytes(6), 'hex'));
   insert into public.admin_invites (code_hash, expires_at, created_by)
-    values (crypt(generated_code, gen_salt('bf')), invite_expires_at, auth.uid());
+    values (extensions.crypt(generated_code, extensions.gen_salt('bf')), invite_expires_at, auth.uid());
   invite_code := generated_code;
   expires_at := invite_expires_at;
   return next;
@@ -58,7 +58,7 @@ begin
       from public.admin_invites
       where used_at is null
         and expires_at > now()
-        and code_hash = crypt(requested_code, code_hash)
+        and code_hash = extensions.crypt(requested_code, code_hash)
       for update;
     if matching_invite is null then
       raise exception 'Administrator invitation is invalid or expired';
