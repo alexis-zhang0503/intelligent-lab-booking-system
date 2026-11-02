@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 type AgentRequest = {
   message?: string;
   mode: "booking" | "admin";
+  language?: "zh" | "en";
   input?: {
     date?: string;
     preferredHour?: number;
@@ -70,6 +71,10 @@ Deno.serve(async (request) => {
     return json({ error: "Invalid JSON request body" }, 400);
   }
   if (body.mode !== "booking" && body.mode !== "admin") return json({ error: "mode must be booking or admin" }, 400);
+  const respondInChinese = body.language === "zh";
+  const fallbackMessage = respondInChinese
+    ? "智能服务暂不可用，现已展示基于规则的实时结果。"
+    : "AI is unavailable; rule-based real-time results are shown instead.";
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authorization } } });
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -195,12 +200,12 @@ Deno.serve(async (request) => {
           requiredDeviceCount: input.requiredDeviceCount,
           preferredDevices: input.preferredDevices,
         });
-        const response = { requestId, outcome: "fallback", message: "AI is unavailable; rule-based candidates are shown instead.", candidates };
+        const response = { requestId, outcome: "fallback", message: fallbackMessage, candidates };
         await audit("fallback", response, reason);
         return json(response);
       }
       const metrics = await runTool("get_admin_metrics", { startDate: input.startDate, endDate: input.endDate });
-      const response = { requestId, outcome: "fallback", message: "AI is unavailable; live metrics are shown without interpretation.", metrics };
+      const response = { requestId, outcome: "fallback", message: respondInChinese ? "智能服务暂不可用，现已展示实时指标。" : "AI is unavailable; live metrics are shown without interpretation.", metrics };
       await audit("fallback", response, reason);
       return json(response);
     } catch (error) {
@@ -212,9 +217,10 @@ Deno.serve(async (request) => {
 
   if (!deepseekApiKey) return fallback("DEEPSEEK_API_KEY is not configured");
 
+  const responseLanguage = respondInChinese ? "Chinese" : "English";
   const system = body.mode === "booking"
-    ? "You are an appointment assistant. Use get_schedule_candidates for availability. Never claim a reservation exists, never request secrets, and state that the user must explicitly confirm before booking."
-    : "You are a read-only laboratory administrator assistant. Use get_admin_metrics, distinguish booking rate from check-in usage rate, and do not make operational changes.";
+    ? `You are an appointment assistant. Use get_schedule_candidates for availability. Never claim a reservation exists, never request secrets, and state that the user must explicitly confirm before booking. Respond entirely in ${responseLanguage}.`
+    : `You are a read-only laboratory administrator assistant. Use get_admin_metrics, distinguish booking rate from check-in usage rate, and do not make operational changes. Respond entirely in ${responseLanguage}.`;
   const messages: Array<Record<string, unknown>> = [
     { role: "system", content: system },
     { role: "user", content: body.message || JSON.stringify(input) },
