@@ -1,0 +1,13 @@
+@media (max-width: 700px) {
+  nav {
+    scroll-snap-type: x proximity;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  nav::-webkit-scrollbar { display: none; }
+  .nav-btn { scroll-snap-align: start; }
+}
+
+/* Motion is reserved for entry and interaction feedback, not decoration. */
+.orb { animation: none; }

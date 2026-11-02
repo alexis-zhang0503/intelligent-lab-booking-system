@@ -7,15 +7,15 @@
   <meta name="theme-color" content="#090f18">
   <title>智能实验室预约系统</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="refinement.css">
 </head>
 <body>
   <div class="orb orb-a"></div><div class="orb orb-b"></div>
   <main id="auth" class="auth">
     <section class="intro">
-      <p class="eyebrow">NUPT / LAB ACCESS</p>
-      <h1>让每一台设备<br>都被清晰预约。</h1>
-      <p>面向课程实验室的预约、座位与设备状态管理工作台。</p>
-      <div class="metrics"><div><b>40</b><span>实验设备</span></div><div><b>09</b><span>开放时段</span></div><div><b>02</b><span>使用角色</span></div></div>
+      <p class="eyebrow">NJUPT</p>
+      <h1>实验，从容开始。</h1>
+      <p>用更清晰的方式，安排每一次到达。</p>
     </section>
     <section class="auth-card">
       <div class="tabs"><button class="tab active" data-tab="login">登录</button><button class="tab" data-tab="register">注册</button></div>
@@ -24,8 +24,8 @@
     </section>
   </main>
   <main id="app" class="app" hidden>
-    <aside class="side"><a class="logo" href="#"><i>L</i>LAB<span>/40</span></a><div id="profile" class="profile"></div><nav id="nav"></nav><p class="local-note">数据仅保存在本浏览器</p><button id="logout" class="link-btn">退出登录</button></aside>
-    <section class="main"><header><div><p id="kicker" class="eyebrow"></p><h1 id="title"></h1></div><div class="head-actions"><em><i></i>本地数据已同步</em><button id="countFile" class="outline">下载 count.txt</button><button id="errorFile" class="outline">下载 error.txt</button></div></header><div id="content"></div></section>
+    <aside class="side"><a class="logo" href="#"><i>N</i>NJUPT<span> 智能实验室</span></a><div id="profile" class="profile"></div><nav id="nav"></nav><button id="logout" class="link-btn">退出登录</button></aside>
+    <section class="main"><header><div><p id="kicker" class="eyebrow"></p><h1 id="title"></h1></div><div class="head-actions"><button id="countFile" class="outline">下载 count.txt</button><button id="errorFile" class="outline">下载 error.txt</button></div></header><div id="content"></div></section>
   </main>
   <dialog id="faultModal"><form id="faultForm"><div class="modal-title"><div><p class="eyebrow">DEVICE REPORT</p><h2>上报设备故障</h2></div><button class="x" type="button" id="closeModal" aria-label="关闭">×</button></div><label>电脑编号<select id="faultDesk"></select></label><label>故障描述<textarea id="faultText" required maxlength="120" placeholder="例如：显示器无信号，无法开机"></textarea></label><button class="primary">提交故障记录 <span>→</span></button></form></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
