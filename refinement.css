@@ -192,6 +192,9 @@ header h1 { font-size: clamp(2.4rem, 4.5vw, 4rem); letter-spacing: -.055em; }
 .booking-flow .compact-selection { min-height: 48px; line-height: 1.45; }
 .booking-flow .primary { width: 100%; margin-top: 0; }
 .schedule-panel { margin-top: 1.25rem; }
+.admin-export { border-color: #b9dcff; background: linear-gradient(145deg, #ffffff, #edf7ff); }
+.admin-export .wide { justify-content: center; }
+body[data-role="admin"] .profile .avatar { color: #075eb0; background: #dceeff; }
 
 body.launching { overflow: hidden; }
 body.launching #auth { pointer-events: none; animation: auth-exit .34s cubic-bezier(.4,0,1,1) both; }
