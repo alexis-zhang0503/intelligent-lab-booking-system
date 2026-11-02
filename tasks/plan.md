@@ -1,53 +1,71 @@
-# Implementation Plan: 智能实验室预约系统
+# Implementation Plan: Dual-client Intelligent Lab Reservation System
 
 ## Overview
 
-构建可部署到 GitHub Pages 的纯前端预约网站。系统将以浏览器本地存储保存演示数据，并让用户下载题目要求的 count.txt 与 error.txt，不伪装为可跨设备同步的后端服务。
+Keep the GitHub Pages web client and add a Windows Qt/C++ client. Both clients follow the assignment's nine one-hour slots, explicit seat-state symbols, role separation, exports, and a shared backend contract. The web client remains runnable in local demo mode until Supabase project credentials are supplied; a database transaction becomes the authoritative multi-device conflict check once configured.
 
 ## Architecture Decisions
 
-- 使用无构建步骤的 HTML、CSS、JavaScript，便于课程验收和 GitHub Pages 部署。
-- 管理员和学生均通过注册获得角色；登录状态、预约和故障记录存储在当前浏览器。
-- 预约记录的唯一性由日期、设备编号与小时的组合保证。
-- 采用深色、数据工作台式界面；桌面侧栏在窄屏转换为横向导航，40 台设备在手机上重排。
+- Keep the existing HTML/CSS visual system and refactor its JavaScript into domain, storage, and UI modules.
+- Use exactly nine hourly slots from 08:00 to 17:00 in both clients.
+- Use `*` for available, `#` for reserved, and `!` for faulty equipment. Faulty and reserved seats cannot be booked by students.
+- Use a Supabase/PostgreSQL schema, Row Level Security, and an atomic reservation RPC as the shared production contract. No service key belongs in either client.
+- Allow public student registration only. Administrator accounts are seeded or created through a server-side invitation path.
+- Provide a Qt 6 Widgets client with a CMake build, file-backed demo mode, and a network layer reserved for the shared API.
 
 ## Task List
 
-### Phase 1: Foundation
+### Phase 1: Web correctness and structure
 
-- [ ] Task 1: 创建静态项目、GitHub Pages 工作流和使用说明。
-- [ ] Task 2: 实现用户注册、登录、本地状态与角色导航。
+- [ ] Task 1: Refactor web domain and persistence logic into modules with detailed comments.
+- [ ] Task 2: Convert reservation, reporting, duration, and export logic to one-hour slots.
+- [ ] Task 3: Make seat status explicit with `*`, `#`, and `!`; preserve disabled controls and accessible labels.
+- [ ] Task 4: Restrict public registration to students and preserve a documented pre-seeded admin path.
 
-### Checkpoint: Foundation
+### Checkpoint: Web foundation
 
-- [ ] JavaScript 语法检查通过。
-- [ ] 学生和管理员均可注册、退出与重新登录。
+- [ ] JavaScript module syntax passes.
+- [ ] Nine hourly slots are shown in booking and exports.
+- [ ] Students cannot select reserved or faulty equipment.
 
-### Phase 2: Core Features
+### Phase 2: Shared data contract
 
-- [ ] Task 3: 实现 40 设备、9 时段的多选预约与取消，并阻止时段冲突。
-- [ ] Task 4: 实现学生故障上报、管理员设备维护和用户查询。
-- [ ] Task 5: 实现周统计、累计时长、count.txt 和 error.txt 下载。
+- [ ] Task 5: Add documented SQL schema, policies, unique constraints, and atomic reservation function.
+- [ ] Task 6: Add a web backend adapter that uses the contract when configuration is supplied and keeps demo data local otherwise.
 
-### Checkpoint: Core Features
+### Checkpoint: Data contract
 
-- [ ] 两种角色关键流程均可完成。
-- [ ] 导出的两个文本文件含实际界面数据。
+- [ ] Schema enforces one valid reservation per device/date/hour.
+- [ ] No privileged backend secret appears in client files.
 
-### Phase 3: Responsive QA and Publish
+### Phase 3: Qt/C++ client
 
-- [ ] Task 6: 在 375、768、1024、1440 像素宽度检查布局、键盘焦点和触控操作。
-- [ ] Task 7: 自动审查、修复问题、推送仓库并验证 GitHub Pages 部署。
+- [ ] Task 7: Create a documented Qt 6/CMake application skeleton and data models.
+- [ ] Task 8: Implement authentication, student booking, and administrator maintenance windows in file-backed demo mode.
+- [ ] Task 9: Implement weekly statistics and `count.txt` / `error.txt` export in the Qt client.
 
-### Checkpoint: Complete
+### Checkpoint: Qt client
 
-- [ ] 无横向溢出；手机可使用座位图、预约与导航。
-- [ ] GitHub Actions Pages 工作流成功。
+- [ ] CMake configures and builds when Qt 6 Widgets is installed.
+- [ ] Student and administrator flows use the same one-hour and seat-state rules.
+
+### Phase 4: Verification
+
+- [ ] Task 10: Add focused JavaScript logic tests and C++ model tests.
+- [ ] Task 11: Run syntax, build, and regression checks; fix verified findings and repeat once.
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| 纯前端不支持真实多人共享 | README 和界面明确说明数据只在当前浏览器保存。 |
-| GitHub Pages 无法直接写入文本文件 | 通过浏览器下载题目要求的两个文本文件。 |
-| 40 格座位图在手机上过密 | 以两列座位组重排，保持按钮可触及和状态可辨。 |
+| Risk | Impact | Mitigation |
+|---|---|---|
+| No Supabase credentials are available locally | High | Provide the migration and client contract; do not claim cross-device live behavior before a project is connected. |
+| Qt 6 SDK is not installed | High | Detect it before the build; preserve a standards-compliant CMake project and install only after checking the available Windows toolchain. |
+| Static demo storage is mistaken for a real backend | High | Clearly separate demo mode from shared-backend mode in README and UI copy. |
+| Refactor changes existing visual behavior | Medium | Keep the existing markup and CSS contract, then run browser-level regression checks. |
+
+## Acceptance Criteria
+
+- Both clients use nine hourly slots and the same seat-state semantics.
+- No public interface can self-assign the administrator role.
+- Web and Qt sources are separated, documented, buildable, and committed in the same repository.
+- A database-level uniqueness rule, not client timing, resolves real multi-device reservation races after backend configuration.

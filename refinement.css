@@ -342,8 +342,12 @@ nav::-webkit-scrollbar { display: none; }
 .lab-panel .desk.unavailable { opacity: 1; border-color: #d1d1d6; color: #86868b; background: #e9e9ed; box-shadow: none; cursor: not-allowed; }
 .lab-panel .desk.unavailable i { color: #8e8e93; }
 .lab-panel .desk.unavailable:hover { border-color: #d1d1d6; background: #e9e9ed; transform: none; box-shadow: none; }
+.lab-panel .desk.unavailable.faulty { border-color: #f0b8b4; color: #b42318; background: #fff1f0; }
+.lab-panel .desk.unavailable.faulty i { color: #d92d20; }
+.lab-panel .desk.unavailable.faulty:hover { border-color: #f0b8b4; background: #fff1f0; }
 .lab-panel .desk.selected { border-color: #7db9f5; background: #eaf4ff; }
 .legend .occ { background: #8e8e93; }
+.legend .bad { background: #d92d20; }
 
 .time-check { display: flex; align-items: center; gap: .65rem; margin-top: .9rem; padding: .75rem .8rem; border: 1px solid #cbe4ff; border-radius: 14px; color: #075eb0; background: #f3f8ff; }
 .time-check i { width: .55rem; height: .55rem; flex: 0 0 auto; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px currentColor; opacity: .2; }
