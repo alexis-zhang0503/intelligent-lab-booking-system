@@ -32,7 +32,9 @@ begin
     raise exception 'Invitation expiry must be within the next 30 days';
   end if;
 
-  generated_code := 'NJUPT-' || upper(encode(extensions.gen_random_bytes(6), 'hex'));
+  -- gen_random_uuid is already used by this project schema and avoids relying
+  -- on the optional byte-generator function namespace.
+  generated_code := 'NJUPT-' || upper(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 12));
   insert into public.admin_invites (code_hash, expires_at, created_by)
     values (extensions.crypt(generated_code, extensions.gen_salt('bf')), invite_expires_at, auth.uid());
   invite_code := generated_code;
