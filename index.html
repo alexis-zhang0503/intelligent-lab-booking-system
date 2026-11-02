@@ -31,7 +31,7 @@
     <section class="main"><header><div><p id="kicker" class="eyebrow"></p><h1 id="title"></h1></div></header><div id="content"></div></section>
   </main>
   <div id="entryOverlay" class="entry-overlay" hidden aria-hidden="true"><div class="entry-core"><img src="favicon.svg" alt=""><span>NJUPT</span><i></i></div><p>正在进入实验室</p></div>
-  <div id="bookingOverlay" class="booking-overlay" hidden aria-hidden="true"><div class="booking-mark"><img src="favicon.svg" alt=""><i></i></div><p class="eyebrow">RESERVATION CONFIRMED</p><h2>预约已确认</h2><p id="bookingOverlayCopy">设备与时间已为你保留</p></div>
+  <div id="bookingOverlay" class="booking-overlay" hidden aria-hidden="true"><section class="booking-confirmation" role="status" aria-live="polite"><div class="booking-check" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="m14 24 7 7 14-15"/></svg></div><p class="eyebrow">RESERVATION CONFIRMED</p><h2>预约已确认</h2><p id="bookingOverlayCopy">设备与时间已为你保留</p></section></div>
   <dialog id="faultModal"><form id="faultForm"><div class="modal-title"><div><p class="eyebrow">DEVICE REPORT</p><h2>上报设备故障</h2></div><button class="x" type="button" id="closeModal" aria-label="关闭">×</button></div><label>电脑编号<select id="faultDesk"></select></label><label>故障描述<textarea id="faultText" required maxlength="120" placeholder="例如：显示器无信号，无法开机"></textarea></label><button class="primary">提交故障记录 <span>→</span></button></form></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>

@@ -197,27 +197,26 @@ header h1 { font-size: clamp(2.4rem, 4.5vw, 4rem); letter-spacing: -.055em; }
 body[data-role="admin"] .profile .avatar { color: #075eb0; background: #dceeff; }
 
 body.launching { overflow: hidden; }
-body.launching #auth { pointer-events: none; animation: auth-exit .72s cubic-bezier(.4,0,1,1) both; }
-body.launching #app { position: fixed; inset: 0; z-index: 20; overflow: auto; opacity: 0; transform: translateY(18px); }
-body.launching-ready #app { animation: app-enter 1.15s .38s cubic-bezier(.2,.8,.2,1) both; }
-.entry-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: 1rem; color: #fff; background: radial-gradient(circle at 50% 44%, #0a6fda 0, #053d78 32%, #061426 72%); opacity: 0; pointer-events: none; overflow: hidden; }
-.entry-overlay::before, .entry-overlay::after { position: absolute; inset: -30%; content: ""; background-image: linear-gradient(#ffffff10 1px, transparent 1px), linear-gradient(90deg, #ffffff10 1px, transparent 1px); background-size: 32px 32px; transform: perspective(520px) rotateX(58deg) translateY(18%); }
-.entry-overlay::after { inset: 0; background: linear-gradient(90deg, transparent, #9fdbff9e, transparent); background-size: 28% 100%; background-repeat: no-repeat; opacity: 0; }
-.entry-core { position: relative; display: flex; align-items: center; justify-content: center; gap: .7rem; font-size: 1rem; font-weight: 650; letter-spacing: .08em; }
-.entry-core img { width: 42px; height: 42px; filter: drop-shadow(0 8px 18px #00000055); }
-.entry-core i { position: absolute; right: 0; bottom: -1rem; left: 0; height: 1px; background: #b9e2ff; transform: scaleX(0); transform-origin: left; }
-.entry-overlay > p { margin: 0; color: #b9dcff; text-align: center; font-size: .75rem; letter-spacing: .12em; }
-body.launching-ready .entry-overlay { animation: entry-screen 2s linear both; }
-body.launching-ready .entry-overlay::after { animation: entry-scan 2s cubic-bezier(.2,.8,.2,1) both; }
-body.launching-ready .entry-core { animation: entry-core 2s cubic-bezier(.2,.8,.2,1) both; }
+body.launching #auth { pointer-events: none; animation: auth-exit .55s cubic-bezier(.4,0,1,1) both; }
+body.launching #app { position: fixed; inset: 0; z-index: 20; overflow: auto; opacity: 0; transform: translateY(10px); }
+body.launching-ready #app { animation: app-enter 1.05s .46s cubic-bezier(.2,.8,.2,1) both; }
+.entry-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: .85rem; color: var(--ink); background: #f5f5f7bd; backdrop-filter: saturate(180%) blur(18px); opacity: 0; pointer-events: none; overflow: hidden; }
+.entry-overlay::before { position: absolute; width: min(78vw, 720px); aspect-ratio: 1; border-radius: 50%; content: ""; background: radial-gradient(circle, #d9ecff 0%, #f5f5f700 67%); filter: blur(12px); transform: scale(.72); }
+.entry-core { position: relative; display: flex; align-items: center; justify-content: center; gap: .72rem; padding: 1.15rem 1.4rem; border: 1px solid #ffffffd9; border-radius: 22px; background: #ffffffeb; box-shadow: 0 18px 50px #1d1d1f18; font-size: .9rem; font-weight: 650; letter-spacing: .02em; transform: translateY(10px) scale(.97); }
+.entry-core img { width: 38px; height: 38px; }
+.entry-core i { position: absolute; right: 1.4rem; bottom: .65rem; left: 1.4rem; height: 1px; background: var(--blue); transform: scaleX(0); transform-origin: left; }
+.entry-overlay > p { position: relative; margin: 0; color: var(--subtle); text-align: center; font-size: .76rem; }
+body.launching-ready .entry-overlay { animation: entry-backdrop 2s ease both; }
+body.launching-ready .entry-overlay::before { animation: entry-glow 2s cubic-bezier(.2,.8,.2,1) both; }
+body.launching-ready .entry-core { animation: entry-sheet 2s cubic-bezier(.2,.8,.2,1) both; }
 body.launching-ready .entry-core i { animation: entry-line 2s cubic-bezier(.2,.8,.2,1) both; }
-body.launching-ready .entry-overlay > p { animation: entry-copy 2s ease both; }
+body.launching-ready .entry-overlay > p { animation: entry-copy 2s cubic-bezier(.2,.8,.2,1) both; }
 
-@keyframes entry-screen { 0%, 10% { opacity: 0; } 18%, 69% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes entry-scan { 0%, 17% { background-position: -30% 0; opacity: 0; } 26%, 65% { opacity: .75; } 72%, 100% { background-position: 140% 0; opacity: 0; } }
-@keyframes entry-core { 0%, 15% { opacity: 0; transform: scale(.72) translateY(12px); } 30%, 61% { opacity: 1; transform: scale(1) translateY(0); } 100% { opacity: 0; transform: scale(1.18) translateY(-12px); } }
-@keyframes entry-line { 0%, 26% { transform: scaleX(0); } 42%, 62% { transform: scaleX(1); } 100% { transform: scaleX(0); transform-origin: right; } }
-@keyframes entry-copy { 0%, 27% { opacity: 0; transform: translateY(6px); } 40%, 60% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-6px); } }
+@keyframes entry-backdrop { 0%, 7% { opacity: 0; } 15%, 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes entry-glow { 0%, 12% { opacity: 0; transform: scale(.72); } 30%, 72% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.2); } }
+@keyframes entry-sheet { 0%, 12% { opacity: 0; transform: translateY(10px) scale(.97); } 29%, 75% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-5px) scale(.985); } }
+@keyframes entry-line { 0%, 27% { transform: scaleX(0); } 42%, 69% { transform: scaleX(1); } 100% { transform: scaleX(0); transform-origin: right; } }
+@keyframes entry-copy { 0%, 30% { opacity: 0; transform: translateY(6px); } 43%, 66% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-6px); } }
 
 @keyframes auth-exit {
   to { opacity: 0; transform: scale(.985); filter: blur(4px); }
@@ -335,29 +334,35 @@ nav::-webkit-scrollbar { display: none; }
 .desk:active:not(:disabled) { transform: none; }
 .desk.selected { transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease; }
 
-.booking-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-content: center; justify-items: center; gap: .7rem; padding: 1.5rem; color: #fff; text-align: center; background: radial-gradient(circle at 50% 44%, #0b78df 0, #07519b 30%, #061426 72%); opacity: 0; pointer-events: auto; overflow: hidden; }
-.booking-overlay::before, .booking-overlay::after { position: absolute; inset: -25%; content: ""; pointer-events: none; }
-.booking-overlay::before { border: 1px solid #9fdcff38; border-radius: 50%; transform: scale(.35); }
-.booking-overlay::after { background: linear-gradient(90deg, transparent, #b8e5ff66, transparent); transform: translateX(-130%); }
-.booking-mark { position: relative; display: grid; width: 76px; height: 76px; place-items: center; border: 1px solid #b9e2ff6b; border-radius: 50%; background: #ffffff12; box-shadow: 0 0 0 12px #ffffff0b, 0 14px 36px #00000036; }
-.booking-mark img { width: 38px; height: 38px; }
-.booking-mark i { position: absolute; inset: -11px; border: 1px solid #b9e2ff80; border-radius: inherit; }
-.booking-overlay .eyebrow { position: relative; margin: .45rem 0 0; color: #b9dcff; font-size: .7rem; }
-.booking-overlay h2 { position: relative; margin: 0; font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 600; letter-spacing: -.045em; }
-.booking-overlay > p:last-child { position: relative; max-width: 340px; margin: 0; color: #d9ecff; font-size: .9rem; }
+.time-check { display: flex; align-items: center; gap: .65rem; margin-top: .9rem; padding: .75rem .8rem; border: 1px solid #cbe4ff; border-radius: 14px; color: #075eb0; background: #f3f8ff; }
+.time-check i { width: .55rem; height: .55rem; flex: 0 0 auto; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px currentColor; opacity: .2; }
+.time-check b, .time-check span { display: block; }
+.time-check b { font-size: .78rem; font-weight: 650; }
+.time-check span { margin-top: .18rem; color: var(--subtle); font-size: .7rem; }
+.time-check.blocked { border-color: #f0d3d0; color: #c4382d; background: #fff7f6; }
+.booking-flow .primary:disabled { cursor: not-allowed; color: #8b8b91; background: #e9e9ed; box-shadow: none; transform: none; }
+
+/* A calm confirmation sheet: an original interpretation of Apple-like material, spacing, and motion. */
+.booking-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1.5rem; background: #f5f5f7bd; backdrop-filter: saturate(180%) blur(18px); opacity: 0; pointer-events: auto; }
+.booking-overlay::before { position: absolute; width: min(78vw, 720px); aspect-ratio: 1; border-radius: 50%; content: ""; background: radial-gradient(circle, #d9ecff 0%, #f5f5f700 67%); filter: blur(12px); transform: scale(.72); }
+.booking-confirmation { position: relative; display: grid; justify-items: center; max-width: 340px; padding: 2.5rem 2.2rem 2.3rem; border: 1px solid #ffffffd9; border-radius: 28px; color: var(--ink); background: #ffffffeb; box-shadow: 0 22px 60px #1d1d1f1f; text-align: center; transform: translateY(10px) scale(.97); }
+.booking-check { display: grid; width: 58px; height: 58px; place-items: center; border-radius: 50%; color: #fff; background: #30a46c; box-shadow: 0 10px 20px #30a46c2e; }
+.booking-check svg { width: 32px; height: 32px; }
+.booking-check path { stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 38; stroke-dashoffset: 38; }
+.booking-confirmation .eyebrow { margin: 1.35rem 0 .45rem; color: #6e6e73; font-size: .66rem; letter-spacing: .09em; }
+.booking-confirmation h2 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.25rem); font-weight: 600; letter-spacing: -.05em; }
+.booking-confirmation > p:last-child { margin: .6rem 0 0; color: var(--subtle); font-size: .84rem; line-height: 1.5; }
 body.booking-success { overflow: hidden; }
-body.booking-success-ready .booking-overlay { animation: booking-screen 2s linear both; }
-body.booking-success-ready .booking-overlay::before { animation: booking-ring 2s cubic-bezier(.2,.8,.2,1) both; }
-body.booking-success-ready .booking-overlay::after { animation: booking-sweep 2s cubic-bezier(.2,.8,.2,1) both; }
-body.booking-success-ready .booking-mark { animation: booking-mark 2s cubic-bezier(.2,.8,.2,1) both; }
-body.booking-success-ready .booking-mark i { animation: booking-orbit 2s ease both; }
-body.booking-success-ready .booking-overlay .eyebrow, body.booking-success-ready .booking-overlay h2, body.booking-success-ready .booking-overlay > p:last-child { animation: booking-copy 2s cubic-bezier(.2,.8,.2,1) both; }
-@keyframes booking-screen { 0%, 9% { opacity: 0; } 16%, 79% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes booking-ring { 0%, 13% { opacity: 0; transform: scale(.35); } 30%, 68% { opacity: .8; transform: scale(1.35); } 100% { opacity: 0; transform: scale(2.4); } }
-@keyframes booking-sweep { 0%, 20% { transform: translateX(-130%); opacity: 0; } 32%, 67% { opacity: 1; } 82%, 100% { transform: translateX(130%); opacity: 0; } }
-@keyframes booking-mark { 0%, 18% { opacity: 0; transform: scale(.58); } 33%, 68% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.14); } }
-@keyframes booking-orbit { 0%, 25% { opacity: 0; transform: scale(.6); } 38%, 66% { opacity: 1; transform: scale(1.18); } 100% { opacity: 0; transform: scale(1.55); } }
-@keyframes booking-copy { 0%, 30% { opacity: 0; transform: translateY(8px); } 43%, 66% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-7px); } }
+body.booking-success-ready .booking-overlay { animation: confirmation-backdrop 2s ease both; }
+body.booking-success-ready .booking-overlay::before { animation: confirmation-glow 2s cubic-bezier(.2,.8,.2,1) both; }
+body.booking-success-ready .booking-confirmation { animation: confirmation-sheet 2s cubic-bezier(.2,.8,.2,1) both; }
+body.booking-success-ready .booking-check { animation: confirmation-check 2s cubic-bezier(.2,.8,.2,1) both; }
+body.booking-success-ready .booking-check path { animation: confirmation-stroke 2s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes confirmation-backdrop { 0%, 7% { opacity: 0; } 15%, 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes confirmation-glow { 0%, 12% { opacity: 0; transform: scale(.72); } 30%, 72% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.2); } }
+@keyframes confirmation-sheet { 0%, 12% { opacity: 0; transform: translateY(10px) scale(.97); } 29%, 75% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-5px) scale(.985); } }
+@keyframes confirmation-check { 0%, 18% { transform: scale(.72); } 33%, 75% { transform: scale(1); } 100% { transform: scale(.94); } }
+@keyframes confirmation-stroke { 0%, 24% { stroke-dashoffset: 38; } 42%, 78% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
 
 @media (max-width: 900px) {
   .side-select { height: auto; display: grid; grid-template-rows: none; }
