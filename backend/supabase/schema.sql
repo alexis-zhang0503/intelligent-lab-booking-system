@@ -49,7 +49,8 @@ create table if not exists public.issue_reports (
   status text not null default 'reported' check (status in ('reported', 'faulty', 'resolved')),
   created_at timestamptz not null default now(),
   resolved_at timestamptz,
-  resolved_by uuid references public.profiles(id)
+  resolved_by uuid references public.profiles(id),
+  resolution_note text check (resolution_note is null or char_length(trim(resolution_note)) between 1 and 120)
 );
 
 -- Auth metadata creates a student profile automatically. Client code never chooses a role.

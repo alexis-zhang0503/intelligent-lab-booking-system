@@ -11,6 +11,7 @@ This directory contains the database contract shared by the GitHub Pages client 
 5. Run `cloud-migration.sql` after `schema.sql`. It enables secure student cancellation and administrator-led student deactivation for the cloud Web client.
 6. Run `admin-invite-migration.sql` to enable one-time administrator invitations generated inside the Web administrator interface.
 7. Run `admin-profile-migration.sql` to let administrators edit display names safely from the user table.
+8. Run `issue-tracking-migration.sql` to store a repair outcome and make each fault record traceable from report to resolution.
 
 ## Security model
 
