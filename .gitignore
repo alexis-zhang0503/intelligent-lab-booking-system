@@ -1,3 +1,4 @@
 # Generated Qt/CMake output must not be committed with course source code.
 qt-client/build/
+.worktrees/
 *.user
