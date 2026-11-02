@@ -5,7 +5,7 @@ This is the C++ graphical version of the intelligent lab reservation assignment.
 ## Features
 
 - Public student registration and password login
-- Pre-seeded administrator path for demonstration
+- Maintainer-provisioned administrator path for demonstration
 - Forty-device plan with `*` available, `#` reserved, and `!` faulty states
 - Assignment-defined hourly reservations from 08:00–17:00
 - Student booking, cancellation, and fault reports
@@ -21,7 +21,7 @@ cmake -S qt-client -B qt-client/build
 cmake --build qt-client/build --config Release
 ```
 
-The application stores demo records under the current Windows user's application-data folder. To seed a local demonstration administrator, set `LAB_DEMO_ADMIN_PASSWORD` before launching, then sign in as `admin` with that value. No administrator password is compiled into the application.
+The application stores demo records under the current Windows user's application-data folder. To provision a local demonstration administrator, a maintainer sets `LAB_DEMO_ADMIN_PASSWORD` before launching, then signs in as `admin` with that value. No administrator password is compiled into the application.
 
 ## Shared backend
 

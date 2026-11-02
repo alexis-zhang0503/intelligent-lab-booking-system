@@ -91,7 +91,7 @@ void MainWindow::showAuthenticationPage()
     auto *registerButton = actionButton(QStringLiteral("Create student account"));
     form->addRow(signInButton);
     form->addRow(registerButton);
-    auto *adminHint = new QLabel(QStringLiteral("Administrator accounts are pre-seeded or issued by invitation. Public registration creates students only."));
+    auto *adminHint = new QLabel(QStringLiteral("Administrator accounts are provisioned by the project maintainer. Public registration creates students only."));
     adminHint->setWordWrap(true);
     adminHint->setStyleSheet(QStringLiteral("color:#6e6e73; font-size:12px;"));
     form->addRow(adminHint);
