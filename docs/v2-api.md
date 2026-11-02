@@ -13,6 +13,10 @@ All database RPCs require a Supabase authenticated JWT. Every write is executed 
 | `v2_schedule_candidates` | date, preferred hour, required device count, preferred devices | Read-only Top-3 legal candidates filtered by opening rules, maintenance, status, and active booking conflicts. |
 | `v2_admin_metrics` | start date, end date | Administrator-only JSON metrics. |
 | `v2_log_agent_interaction` | request UUID, type, request/response JSON, outcome | Writes an auditable Agent event through a controlled RPC. |
+| `v2_fault_impact_analysis` | issue UUID | Administrator-only read model: future active reservations on the affected device and up to three legal same-slot replacement devices per reservation. It never changes a reservation. |
+| `v2_isolate_fault` | issue UUID, isolation note | Administrator-only confirmed action: marks the device faulty, changes the unresolved issue to `faulty`, and appends one fault-response audit event. Existing reservations remain unchanged. |
+| `v2_complete_fault_repair` | issue UUID, repair note | Administrator-only confirmed action: resolves the issue, restores the device to available, and appends a repair audit event. |
+| `v2_fault_response_metrics` | start date, end date | Administrator-only fault response metrics: reported/open/isolated/repaired counts, mean repair time, and repeat-fault devices. |
 
 ## Edge Function endpoint
 

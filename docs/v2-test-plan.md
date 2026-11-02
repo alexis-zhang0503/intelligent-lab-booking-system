@@ -14,6 +14,10 @@ These tests require an isolated Supabase staging project populated with two stud
 | Metrics | Seed known capacity, bookings, check-ins, cancellations, no-shows, and maintenance intervals. | `v2_admin_metrics` returns independently hand-calculated reservation and actual check-in rates. |
 | DeepSeek fallback | In staging, remove only `DEEPSEEK_API_KEY` from the Edge Function. | Booking mode returns database candidate fallback; no booking occurs until explicit confirmation. |
 | DeepSeek tool boundary | Ask the Agent for a schedule, then inspect audit logs and reservation rows before confirmation. | It has only read/audit RPCs; no reservation is created before confirmation. |
+| Fault impact analysis | As an administrator, analyse an unresolved issue with future `reserved` and `confirmed` reservations. | The result lists only future active reservations on that device, offers at most three legal same-slot alternatives, and changes no rows. |
+| Fault isolation | Confirm isolation for an unresolved issue. | Device becomes `faulty`, issue becomes `faulty`, one `isolated` audit event is written, and affected reservations remain intact. |
+| Fault repair | Submit a valid repair note after isolation. | Issue becomes `resolved`, device returns to `available`, and one `repaired` audit event is written. |
+| Fault response RLS | Call all V2.1 fault RPCs as a student. | Calls fail with administrator access errors; direct event reads return no rows. |
 
 ## Local checks completed in this worktree
 

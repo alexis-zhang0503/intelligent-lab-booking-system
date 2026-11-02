@@ -29,3 +29,14 @@ Keep JWT verification enabled. The function uses the calling user's JWT, not the
 6. Temporarily omit the DeepSeek secret in staging and confirm the scheduling fallback is shown without a failed reservation write.
 
 No production SQL, Edge Function deployment, secret configuration, or authentication configuration has been performed by this code change.
+## V2.1 fault-response agent migration
+
+Run `backend/supabase/v2-1-fault-response-agent-migration.sql` only after the
+V2.0 migration is present. It is additive: it creates `fault_response_events`
+and the four administrator RPCs used by the web fault-response console. It
+does not cancel, move, or otherwise update historical or future reservations.
+
+After the SQL succeeds, deploy the web client. In the administrator's fault
+inbox, use **Analyse impact** to inspect future reservations and replacement
+suggestions, then explicitly confirm isolation. The release intentionally does
+not auto-reschedule affected student reservations.
