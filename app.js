@@ -8,6 +8,7 @@ Object.assign(EN,{"强制刷新状态":"Force refresh status","设备状态已�
 Object.assign(EN,{"开放时段：08:00-17:00（每小时）":"Hours: 08:00–17:00 (hourly)","每个已预约的一小时设备时段累计为一小时。":"Each reserved device hour counts as one hour.","创建学生账号":"Create a student account","学生可直接注册。管理员账号由项目维护者在后台开通。":"Students can register directly. Administrator accounts are provisioned by the project maintainer.","学号":"Student ID","学号 / 管理员邮箱":"Student ID / administrator email"});
 Object.assign(EN,{"学生可直接注册。管理员账号需使用邀请码。":"Students can register directly. Administrator accounts require an invitation code.","使用邀请码注册管理员":"Register an administrator with an invitation","管理员注册":"Administrator registration","输入管理员邀请码后即可创建管理员账号":"Enter an administrator invitation code to create an administrator account","管理员邮箱":"Administrator email","管理员邀请码":"Administrator invitation code","注册管理员并进入":"Create administrator account and enter","返回学生注册":"Back to student registration","生成管理员邀请码":"Generate administrator invitation","邀请码仅显示一次。请通过可信方式发送给新管理员":"The code is shown once. Send it to the new administrator through a trusted channel.","有效期":"Valid for","1 天":"1 day","7 天":"7 days","30 天":"30 days","生成邀请码":"Generate invitation","邀请码":"Invitation code","复制邀请码":"Copy invitation code","邀请码已复制。":"Invitation code copied.","名称已更新。":"Name updated."});
 Object.assign(EN,{"故障现象或原因":"Fault symptom or cause","例如：显示器无信号、无法开机或网络无法连接":"For example: no monitor signal, device will not start, or network unavailable"});
+Object.assign(EN,{"请描述你实际看到的故障现象，或你认为可能的原因":"Describe what you observed or the cause you suspect","写下设备表现，管理员会据此定位和处理问题":"Describe the device behaviour so an administrator can diagnose and resolve it","常见故障现象":"Common symptoms","显示器无信号":"No monitor signal","无法开机":"Device will not start","网络无法连接":"Network unavailable","故障说明至少需要 8 个字符。":"Describe the issue in at least 8 characters.","故障说明":"Issue description","上报人":"Reported by","上报时间":"Reported","维修收件箱":"Maintenance inbox","需要关注的设备":"Devices needing attention","已处理":"Resolved","待处理":"Open","故障中":"Faulty","移动到故障设备上可快速查看故障现象或原因":"Hover a faulty device to preview its symptom or cause","设备状态和维修记录在这里同步":"Device state and maintenance records stay in sync here","全部故障记录":"All issue records","上报设备故障":"Report a device issue","故障设备":"Faulty devices","故障现象或原因":"Fault symptom or cause","选择设备并填写故障现象，再将它标记为故障":"Choose a device, describe the symptom, then mark it faulty","设备状态":"Device status","当前故障":"Current issues","选择可用设备以创建故障记录；选择红色设备即可恢复":"Choose an available device to create an issue record; select a red device to restore it","标记设备故障":"Mark device as faulty","设备已恢复可预约":"Device restored and available","没有待处理的故障记录":"No open issue records","设备状态和维修记录会在这里同步":"Device status and maintenance records stay in sync here","最近故障记录":"Recent issue records","恢复可预约":"Restore availability","点击可用设备开始填写故障说明":"Select an available device to describe the issue","点击红色设备恢复可预约":"Select a red device to restore availability"});
 const ZH=Object.fromEntries(Object.entries(EN).map(([zh,en])=>[en,zh]));
 let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9;
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
@@ -67,7 +68,7 @@ function dashStudent(){syncBookingRange();pruneSelections();head("STUDENT / RESE
 /** Binds the single start selector; the end value is always exactly one hour later. */
 function bindTimes(){let start=q("#startTime");if(!start)return;start.onchange=e=>{startHour=+e.target.value;syncBookingRange();dashStudent()}}
 /** Handles administrator fault toggles and student multi-device selection. */
-function bindDesks(mode){qa("[data-desk]").forEach(e=>e.onclick=()=>{let n=+e.dataset.desk;if(mode==="admin"){toggle(n);return}desks.has(n)?desks.delete(n):desks.add(n);let selected=desks.has(n);e.classList.toggle("selected",selected);e.querySelector("i").textContent=selected?"●":"*";e.setAttribute("aria-label",language==="en"?`Device ${n}, ${selected?"Selected":"Available"}`:`${n}号设备，${selected?"已选择":"空闲"}`);q(".compact-selection").textContent=selection()})}
+function bindDesks(mode){qa("[data-desk]").forEach(e=>e.onclick=()=>{let n=+e.dataset.desk;if(mode==="admin"){if(fault(n))restoreDevice(n);else openModal(n);return}desks.has(n)?desks.delete(n):desks.add(n);let selected=desks.has(n);e.classList.toggle("selected",selected);e.querySelector("i").textContent=selected?"●":"*";e.setAttribute("aria-label",language==="en"?`Device ${n}, ${selected?"Selected":"Available"}`:`${n}号设备，${selected?"已选择":"空闲"}`);q(".compact-selection").textContent=selection()})}
 /** Shows the fixed two-second confirmation after a successful hourly booking. */
 function showBookingSuccess(durationMinutes){let overlay=q("#bookingOverlay"),reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;q("#bookingOverlayCopy").textContent=language==="en"?`Your ${durationMinutes}-minute reservation is ready`:`已为你保留 ${durationMinutes} 分钟`;if(reduce){dashStudent();toast("Reservation confirmed");return}overlay.hidden=false;overlay.setAttribute("aria-hidden","false");document.body.classList.add("booking-success");void overlay.offsetWidth;document.body.classList.add("booking-success-ready");setTimeout(()=>{overlay.hidden=true;overlay.setAttribute("aria-hidden","true");document.body.classList.remove("booking-success","booking-success-ready");dashStudent();toast("Reservation confirmed")},2000)}
 /** Validates every selected device immediately before storing the one-hour reservation. */
@@ -76,15 +77,26 @@ function favorite(a,key,label){let counts={};a.forEach(x=>counts[x[key]]=(counts
 function me(){head("MY PROFILE","我的");let mine=db.bookings.filter(x=>x.userId===user().id),todayMine=mine.filter(x=>x.date===today()).sort((a,b)=>a.hour-b.hour),future=mine.filter(x=>x.date>=today()).sort((a,b)=>(a.date+a.hour).localeCompare(b.date+b.hour)),favoriteDesk=favorite(mine,"deskNo",(n,c)=>"#"+String(n).padStart(2,"0")+" · "+timesLabel(c)),favoriteHour=favorite(mine,"hour",(slot,c)=>fh(slot).split("–")[0]+" · "+timesLabel(c));q("#content").innerHTML=`<section class="profile-hero"><div class="profile-mark">${esc(user().name[0])}</div><div><h2>${esc(user().name)}</h2><p>${tr(admin()?"管理员":"学生")} · ${esc(user().loginId)}</p></div></section><section class="today-spotlight"><div><p class="eyebrow">${fd(today())}</p><h2>${todayMine.length?"今天的预约":"今天还没有预约"}</h2><p>${todayMine.length?todayMine.map(x=>"#"+String(x.deskNo).padStart(2,"0")+" · "+fh(x.hour)).join("　"):"选好设备和起止时间后，会显示在这里。"}</p></div><div class="today-number"><b>${todayMine.length}</b><span>${slotsLabel(todayMine.length)}</span></div>${todayMine.length?"":`<button data-go="dashboard" class="secondary small-btn">去预约</button>`}</section><div class="profile-grid"><section class="panel preference-panel"><h2>预约偏好</h2><p class="sub">根据你的实际预约自动汇总</p><div class="preference-list"><div><span>常用设备</span><b>${favoriteDesk}</b></div><div><span>常用时段</span><b>${favoriteHour}</b></div><div><span>未来预约</span><b>${slotsLabel(future.length)}</b></div></div></section><section class="panel my-bookings"><h2>我的预约</h2><p class="sub">取消后设备时段会立即释放。</p>${records(mine.slice().sort((a,b)=>(a.date+a.hour).localeCompare(b.date+b.hour)),true)}</section></div>`;go()}
 /** Renders administrator metrics using the actual current full-hour slot. */
 function dashAdmin(){head("ADMIN / OPERATIONS","实验室总览");let t=db.bookings.filter(x=>x.date===today()),now=new Date(),nowSlot=now.getHours();q("#content").innerHTML=stats([["注册用户",db.users.length],["当前实验人数",t.filter(x=>bookingSlots(x).includes(nowSlot)&&x.status==="reserved").length,"cyan"],["今日预约时段",t.length],["故障设备",db.faults.filter(x=>x.status==="faulty").length,"warn"]])+`<div class="grid2"><section class="panel"><div class="section-head"><div><h2>今日设备使用</h2><p class="sub">${fd(today())}</p></div><button data-go="lab" class="secondary small-btn">设备管理</button></div>${records(t.slice(-8).reverse())}</section><section class="panel"><div class="section-head"><div><h2>待处理故障</h2><p class="sub">学生上报后由管理员确认</p></div><button data-go="faults" class="secondary small-btn">故障维护</button></div>${faultList(db.faults.filter(x=>x.status==="reported"))}</section></div><section class="panel" style="margin-top:1rem"><h2>本周使用趋势</h2><p class="sub">管理员可在“统计与导出”中下载管理文件。</p>${chart()}</section>`;go()}
-function lab(){head("ADMIN / DEVICE STATUS","设备状态维护");q("#content").innerHTML=`<div class="grid2"><section class="panel"><h2>40 台设备平面图</h2><p class="sub">点击设备可切换正常 / 故障；故障设备无法被学生预约。</p>${map("admin")}</section><aside class="panel"><h2>维护说明</h2><p class="helper">红色 ! 是故障设备。管理员可直接标记或恢复设备，学生上报会在故障维护中保留。</p><button id="refreshStatus" class="secondary wide">强制刷新状态</button><button id="report" class="secondary wide" style="margin-top:.6rem">录入故障记录</button></aside></div>`;bindDesks("admin");q("#refreshStatus").onclick=forceRefresh;q("#report").onclick=openModal;syncLanguage()}
+function lab(){let active=db.faults.filter(issue=>issue.status!=="resolved").slice().reverse(),faulty=db.devices.filter(device=>device.status==="faulty").length;head("ADMIN / DEVICE STATUS","设备状态维护");q("#content").innerHTML=`<section class="device-overview"><div><p class="eyebrow">DEVICE OPERATIONS</p><h2>选择设备并填写故障现象，再将它标记为故障</h2><p>设备状态和维修记录会在这里同步</p></div><div class="device-overview-metric"><b>${faulty}</b><span>当前故障</span></div></section><div class="device-layout"><section class="panel device-plan"><div class="section-head"><div><p class="eyebrow">LIVE FLOOR PLAN</p><h2>40 台设备平面图</h2><p class="sub">点击可用设备开始填写故障说明</p></div><div class="device-legend"><span><i></i>空闲</span><span><i class="bad"></i>故障</span></div></div>${map("admin")}</section><aside class="device-console"><section class="panel device-actions"><p class="eyebrow">MAINTENANCE ACTION</p><h2>设备状态</h2><p>选择可用设备以创建故障记录；选择红色设备即可恢复</p><button id="report" class="primary wide">标记设备故障 <span>→</span></button><button id="refreshStatus" class="secondary wide">强制刷新状态</button></section><section class="panel device-current"><div class="section-head"><div><p class="eyebrow">OPEN RECORDS</p><h2>最近故障记录</h2></div><span class="tag ${active.length?"bad":"ok"}">${active.length?active.length:"0"}</span></div>${faultList(active.slice(0,3))}</section></aside></div>`;bindDesks("admin");q("#refreshStatus").onclick=forceRefresh;q("#report").onclick=()=>openModal();qa("[data-fix]").forEach(button=>button.onclick=()=>fix(button.dataset.fix));syncLanguage()}
 function users(){head("ADMIN / USERS","用户档案");q("#content").innerHTML=`<section class="panel"><h2>已注册用户</h2><p class="sub">注册角色、账号和累计预约时长。</p><div class="table-wrap"><table class="table"><thead><tr><th>姓名</th><th>身份</th><th>学号 / 工号</th><th>累计时长</th><th>账号操作</th></tr></thead><tbody>${db.users.map(x=>`<tr><td>${esc(x.name)}</td><td><span class="tag">${x.role==="admin"?"管理员":"学生"}</span></td><td>${esc(x.loginId)}</td><td>${durationLabel(db.bookings.filter(b=>b.userId===x.id))}</td><td>${x.role==="student"?`<button class="secondary small-btn danger-btn" data-remove-user="${x.id}">注销账号</button>`:"—"}</td></tr>`).join("")}</tbody></table></div></section>`;qa("[data-remove-user]").forEach(button=>button.onclick=()=>removeStudent(button.dataset.removeUser));syncLanguage()}
 function reports(){head(admin()?"ADMIN / REPORTS":"STUDENT / HOURS",admin()?"统计与导出":"实验累计时间");if(!admin()){let a=db.bookings.filter(x=>x.userId===user().id),future=a.filter(x=>x.date>=today()).length;q("#content").innerHTML=stats([["累计实验时长",durationLabel(a),"cyan"],["未来预约",future],["已完成记录",Math.max(0,a.length-future)]]);return}q("#content").innerHTML=stats([["累计使用时段",db.bookings.length,"cyan"],["本周使用时段",week().reduce((s,x)=>s+x.count,0)],["可用设备",40-db.faults.filter(x=>x.status==="faulty").length],["故障设备",db.faults.filter(x=>x.status==="faulty").length,"warn"]])+`<div class="grid2"><section class="panel"><h2>一周使用情况</h2><p class="sub">按预约时段统计</p>${chart()}</section><section class="panel admin-export"><p class="eyebrow">管理员权限</p><h2>管理文件导出</h2><p class="helper">导出每日设备使用情况和故障维护记录。</p><button id="c2" class="secondary wide">下载 count.txt</button><button id="e2" class="secondary wide" style="margin-top:.6rem">下载 error.txt</button></section></div>`;q("#c2").onclick=countFile;q("#e2").onclick=errorFile}
 /** Returns the current Monday-through-Sunday week instead of seven future days. */
 function week(){let anchor=new Date(`${today()}T00:00:00`),offset=(anchor.getDay()+6)%7;anchor.setDate(anchor.getDate()-offset);return Array.from({length:7},(_,i)=>{let d=new Date(anchor);d.setDate(anchor.getDate()+i);let key=d.toLocaleDateString("en-CA");return {date:key,count:db.bookings.filter(x=>x.date===key&&x.status!=="cancelled").length}})}
 function chart(){let a=week(),m=Math.max(1,...a.map(x=>x.count));return `<div class="bars">${a.map(x=>`<div class="bar-col"><b>${x.count}</b><i class="bar" style="height:${Math.max(5,x.count/m*112)}px"></i><span>${fd(x.date).replace("日","")}</span></div>`).join("")}</div>`}
-function faults(){head(admin()?"ADMIN / FAULTS":"STUDENT / DEVICE REPORT",admin()?"故障维护":"设备故障上报");let a=admin()?db.faults.slice().reverse():db.faults.filter(x=>x.reporterId===user().id).reverse();q("#content").innerHTML=`<section class="panel"><div class="section-head"><div><h2>${admin()?"全部故障记录":"我的故障记录"}</h2><p class="sub">${admin()?"处理后设备会恢复可预约状态。":"提交后请等待管理员维护设备状态。"}</p></div><button id="report" class="secondary small-btn">上报故障</button></div>${faultList(a)}</section>`;q("#report").onclick=openModal;if(admin())qa("[data-fix]").forEach(b=>b.onclick=()=>fix(b.dataset.fix));syncLanguage()}
-function faultList(a){return a.length?`<div class="records">${a.map(x=>`<div class="record"><div><b>#${String(x.deskNo).padStart(2,"0")} · ${esc(systemFaultText(x.description))}</b><small>${esc(x.reporter||tr("管理员"))} · ${new Date(x.createdAt).toLocaleString(locale(),{hour12:false})}</small></div><div>${x.status==="resolved"?'<span class="tag ok">已处理</span>':x.status==="reported"?'<span class="tag">待处理</span>':'<span class="tag bad">故障中</span>'}${admin()&&x.status!=="resolved"?`<button class="secondary small-btn" data-fix="${x.id}">恢复</button>`:""}</div></div>`).join("")}</div>`:'<p class="empty">暂无故障记录。</p>'}
-function openModal(){q("#faultDesk").innerHTML=DESKS.map(n=>`<option value="${n}">${deviceLabel(n)}</option>`).join("");q("#faultModal").showModal();syncLanguage()}
+function faults(){
+  let manager=admin(),issues=(manager?db.faults:db.faults.filter(item=>item.reporterId===user().id)).slice().reverse();
+  head(manager?"ADMIN / MAINTENANCE":"STUDENT / DEVICE REPORT",manager?"故障维护":"设备故障上报");
+  if(manager){
+    let open=issues.filter(item=>item.status!=="resolved"),faulty=db.devices.filter(item=>item.status==="faulty").length;
+    q("#content").innerHTML=`<section class="maintenance-hero"><div><p class="eyebrow">MAINTENANCE INBOX</p><h2>需要关注的设备</h2><p>每条记录都保留故障现象、上报人和处理状态</p></div><div class="maintenance-metrics"><div><b>${open.length}</b><span>待处理</span></div><div><b>${faulty}</b><span>故障设备</span></div></div></section><div class="maintenance-layout"><section class="panel issue-inbox"><div class="section-head"><div><p class="eyebrow">LIVE RECORDS</p><h2>维修收件箱</h2></div><button id="report" class="secondary small-btn">上报设备故障</button></div>${faultList(issues)}</section><aside class="panel issue-context"><p class="eyebrow">DEVICE CONTEXT</p><h2>先看现象，再处理设备</h2><p>移动到设备管理中的红色 <b>!</b> 方格，即可快速查看该设备最新的故障说明</p><div><span>记录包含</span><b>设备 · 现象或原因 · 上报人 · 时间</b></div></aside></div>`;
+  }else{
+    q("#content").innerHTML=`<section class="panel issue-inbox student-issues"><div class="section-head"><div><p class="eyebrow">DEVICE REPORT</p><h2>我的故障记录</h2><p class="sub">提交后可在这里查看故障现象和处理进度</p></div><button id="report" class="secondary small-btn">上报设备故障</button></div>${faultList(issues)}</section>`;
+  }
+  q("#report").onclick=openModal;if(manager)qa("[data-fix]").forEach(button=>button.onclick=()=>fix(button.dataset.fix));syncLanguage()
+}
+function issueState(issue){return issue.status==="resolved"?'<span class="tag ok">已处理</span>':issue.status==="reported"?'<span class="tag">待处理</span>':'<span class="tag bad">故障中</span>'}
+function faultList(issues){return issues.length?`<div class="issue-list">${issues.map(issue=>`<article class="issue-card"><div class="issue-signal" aria-hidden="true">!</div><div class="issue-body"><header><div><p class="eyebrow">${deviceLabel(issue.deskNo)}</p><h3>故障现象或原因</h3></div>${issueState(issue)}</header><p class="issue-description">${esc(systemFaultText(issue.description))}</p><footer><span><b>上报人</b>${esc(issue.reporter||tr("管理员"))}</span><span><b>上报时间</b>${new Date(issue.createdAt).toLocaleString(locale(),{hour12:false})}</span></footer></div>${admin()&&issue.status!=="resolved"?`<button class="secondary small-btn issue-resolve" data-fix="${issue.id}">恢复</button>`:""}</article>`).join("")}</div>`:'<div class="issue-empty"><b>暂无故障记录。</b><span>设备状态正常时，这里会保持安静</span></div>'}
+function openModal(selectedDesk){q("#faultDesk").innerHTML=DESKS.map(n=>`<option value="${n}">${deviceLabel(n)}</option>`).join("");if(Number.isInteger(selectedDesk))q("#faultDesk").value=String(selectedDesk);q("#faultModal").showModal();bindFaultForm();syncLanguage()}
 function go(){qa("[data-go]").forEach(b=>b.onclick=()=>{page=b.dataset.go;render()});cancelBind()}
 function download(name,text){let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/plain;charset=utf-8"}));a.download=name;a.click();URL.revokeObjectURL(a.href);toast(language==="en"?`Downloaded ${name}`:`已下载 ${name}`)}
 /** Downloads one daily count.txt report using nine assignment-defined hourly sections. */
@@ -162,20 +174,13 @@ async function cancelCloud(reservationId){
 
 function cancelBind(){qa("[data-cancel]").forEach(button=>button.onclick=()=>cancelCloud(button.dataset.cancel))}
 
-/** Administrators update the device row and retain an auditable issue record. */
-async function toggle(number){
-  let faulty=Boolean(fault(number)),next=faulty?"available":"faulty";
-  let {error:deviceError}=await supabase.from("devices").update({status:next,updated_by:user().id,updated_at:new Date().toISOString()}).eq("number",number);
+/** Restores a faulty device and closes every active report attached to it. */
+async function restoreDevice(number){
+  let {error:issueError}=await supabase.from("issue_reports").update({status:"resolved",resolved_at:new Date().toISOString(),resolved_by:user().id}).eq("device_number",number).in("status",["reported","faulty"]);
+  if(issueError){toast(cloudError(issueError),"error");return}
+  let {error:deviceError}=await supabase.from("devices").update({status:"available",updated_by:user().id,updated_at:new Date().toISOString()}).eq("number",number);
   if(deviceError){toast(cloudError(deviceError),"error");return}
-  if(faulty){
-    let {error}=await supabase.from("issue_reports").update({status:"resolved",resolved_at:new Date().toISOString(),resolved_by:user().id}).eq("device_number",number).in("status",["reported","faulty"]);
-    if(error)toast(cloudError(error),"error");
-  }else{
-    let {error}=await supabase.from("issue_reports").insert({device_number:number,reporter_id:user().id,description:"管理员标记为故障。",status:"faulty"});
-    if(error)toast(cloudError(error),"error");
-  }
-  await refreshCloud();
-  lab();
+  toast("设备已恢复可预约");await refreshCloud();lab();
 }
 
 async function fix(issueId){
@@ -184,7 +189,7 @@ async function fix(issueId){
   if(issueError){toast(cloudError(issueError),"error");return}
   let {error:deviceError}=await supabase.from("devices").update({status:"available",updated_by:user().id,updated_at:new Date().toISOString()}).eq("number",issue.deskNo);
   if(deviceError){toast(cloudError(deviceError),"error");return}
-  toast("故障已处理。");await refreshCloud();faults();
+  toast("故障已处理。");await refreshCloud();render();
 }
 
 async function forceRefresh(){await refreshCloud();toast("设备状态已更新。");lab()}
@@ -199,9 +204,32 @@ async function removeStudent(userId){
 
 async function submitCloudIssue(event){
   event.preventDefault();
-  let {error}=await supabase.from("issue_reports").insert({device_number:+q("#faultDesk").value,reporter_id:user().id,description:q("#faultText").value.trim(),status:admin()?"faulty":"reported"});
+  let description=q("#faultText").value.trim(),button=q("#submitFault");
+  if(!validateFaultDescription()){q("#faultText").focus();return}
+  button.disabled=true;
+  let deviceNumber=+q("#faultDesk").value;
+  if(admin()&&fault(deviceNumber)){button.disabled=false;toast("该设备已处于故障状态。","error");return}
+  let {error}=await supabase.from("issue_reports").insert({device_number:deviceNumber,reporter_id:user().id,description,status:admin()?"faulty":"reported"});
+  if(!error&&admin()){
+    let {error:deviceError}=await supabase.from("devices").update({status:"faulty",updated_by:user().id,updated_at:new Date().toISOString()}).eq("number",deviceNumber);
+    error=deviceError;
+  }
+  button.disabled=false;
   if(error){toast(cloudError(error),"error");return}
   q("#faultForm").reset();q("#faultModal").close();toast(admin()?"设备已标记故障。":"故障已上报。");await refreshCloud();render();
+}
+
+/** Gives the short maintenance form local feedback before it reaches the database. */
+function validateFaultDescription(){
+  let field=q("#faultText"),error=q("#faultError"),valid=field.value.trim().length>=4;
+  error.hidden=valid;if(!valid)error.textContent=language==="en"?"Describe the issue in at least 4 characters.":"故障说明至少需要 4 个字符。";
+  field.setAttribute("aria-invalid",String(!valid));return valid;
+}
+function bindFaultForm(){
+  let field=q("#faultText"),count=q("#faultCount");
+  let refresh=()=>count.textContent=`${field.value.length} / 120`;
+  refresh();field.oninput=refresh;field.onblur=validateFaultDescription;
+  qa("[data-symptom]").forEach(button=>button.onclick=()=>{field.value=field.value?`${field.value.trim()}；${button.dataset.symptom}`:button.dataset.symptom;refresh();field.focus()});
 }
 
 async function registerCloud(event){
@@ -291,13 +319,14 @@ document.addEventListener("click",event=>{
   if(column===2)beginProfileIdentityEdit(cell,"loginId");
 });
 
-/** Adds the latest open fault reason to each administrator device square on hover. */
-document.addEventListener("pointerover",event=>{
-  let desk=event.target.closest("#content [data-desk]");
-  if(!desk||!admin()||page!=="lab")return;
-  let number=Number(desk.dataset.desk),latest=db.faults.filter(item=>item.deskNo===number&&item.status!=="resolved").sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)))[0];
-  desk.title=latest?(language==="en"?`Fault: ${latest.description}`:`故障现象或原因：${latest.description}`):"";
-});
+/** Presents the latest fault record near its red device square without hiding it in a native title. */
+function latestOpenFault(number){return db.faults.filter(item=>item.deskNo===number&&item.status!=="resolved").sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)))[0]}
+function hideFaultTooltip(){let tip=q("#faultTooltip");if(tip)tip.hidden=true}
+function placeFaultTooltip(event){let tip=q("#faultTooltip");if(!tip||tip.hidden)return;let x=Math.min(window.innerWidth-tip.offsetWidth-16,event.clientX+16),y=Math.min(window.innerHeight-tip.offsetHeight-16,event.clientY+16);tip.style.transform=`translate(${Math.max(16,x)}px,${Math.max(16,y)}px)`}
+function showFaultTooltip(desk,event){let latest=latestOpenFault(Number(desk.dataset.desk)),tip=q("#faultTooltip");if(!latest||!tip){hideFaultTooltip();return}q("#faultTooltipDevice").textContent=deviceLabel(latest.deskNo);q("#faultTooltipDescription").textContent=latest.description;q("#faultTooltipMeta").textContent=new Date(latest.createdAt).toLocaleString(locale(),{hour12:false});tip.hidden=false;placeFaultTooltip(event)}
+document.addEventListener("pointerover",event=>{let desk=event.target.closest("#content [data-desk]");if(!desk||!admin()||page!=="lab"||!fault(Number(desk.dataset.desk)))return;desk.removeAttribute("title");showFaultTooltip(desk,event)});
+document.addEventListener("pointermove",event=>{if(event.target.closest("#content [data-desk]"))placeFaultTooltip(event)});
+document.addEventListener("pointerout",event=>{if(event.target.closest("#content [data-desk]"))hideFaultTooltip()});
 
 async function loginCloud(event){
   event.preventDefault();
