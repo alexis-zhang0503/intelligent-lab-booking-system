@@ -24,6 +24,13 @@
 
 Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`backend/supabase/cloud-migration.sql` 和 `backend/supabase/admin-invite-migration.sql`，再在 **Authentication → Providers → Email** 关闭 **Confirm email**。之后学生注册、管理员权限、设备状态、预约冲突和实时刷新均以共享数据库为准。Qt 客户端目前保留离线本地演示模式，尚未接入云端。
 
+## V2.0 智能预约升级
+
+- 新增的 [V2 Schema 审计](docs/v2-schema-audit.md) 记录了当前表、RLS、索引、未知项和迁移前置条件；
+- [V2 迁移](backend/supabase/v2-0-migration.sql) 是增量 SQL：复用既有 `reservations`，新增受控状态、签到使用记录、开放规则、维护时段、Agent 审计和调度/指标 RPC；
+- 网页改用 V2 预约、取消、手动签到/签退和实时候选方案 API，并提供 DeepSeek 智能助手与只读管理员分析入口；
+- 部署前请依次阅读 [架构](docs/v2-architecture.md)、[API](docs/v2-api.md) 与 [部署步骤](docs/v2-deployment.md)。生产 Supabase 迁移、Edge Function 部署和 DeepSeek 密钥配置均未自动执行。
+
 ## 本地预览
 
 在项目根目录运行 python -m http.server 4173，然后访问 http://localhost:4173。
