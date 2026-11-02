@@ -200,6 +200,24 @@ body.launching { overflow: hidden; }
 body.launching #auth { pointer-events: none; animation: auth-exit .72s cubic-bezier(.4,0,1,1) both; }
 body.launching #app { position: fixed; inset: 0; z-index: 20; overflow: auto; opacity: 0; transform: translateY(18px); }
 body.launching-ready #app { animation: app-enter 1.15s .38s cubic-bezier(.2,.8,.2,1) both; }
+.entry-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: 1rem; color: #fff; background: radial-gradient(circle at 50% 44%, #0a6fda 0, #053d78 32%, #061426 72%); opacity: 0; pointer-events: none; overflow: hidden; }
+.entry-overlay::before, .entry-overlay::after { position: absolute; inset: -30%; content: ""; background-image: linear-gradient(#ffffff10 1px, transparent 1px), linear-gradient(90deg, #ffffff10 1px, transparent 1px); background-size: 32px 32px; transform: perspective(520px) rotateX(58deg) translateY(18%); }
+.entry-overlay::after { inset: 0; background: linear-gradient(90deg, transparent, #9fdbff9e, transparent); background-size: 28% 100%; background-repeat: no-repeat; opacity: 0; }
+.entry-core { position: relative; display: flex; align-items: center; justify-content: center; gap: .7rem; font-size: 1rem; font-weight: 650; letter-spacing: .08em; }
+.entry-core img { width: 42px; height: 42px; filter: drop-shadow(0 8px 18px #00000055); }
+.entry-core i { position: absolute; right: 0; bottom: -1rem; left: 0; height: 1px; background: #b9e2ff; transform: scaleX(0); transform-origin: left; }
+.entry-overlay > p { margin: 0; color: #b9dcff; text-align: center; font-size: .75rem; letter-spacing: .12em; }
+body.launching-ready .entry-overlay { animation: entry-screen 2s linear both; }
+body.launching-ready .entry-overlay::after { animation: entry-scan 2s cubic-bezier(.2,.8,.2,1) both; }
+body.launching-ready .entry-core { animation: entry-core 2s cubic-bezier(.2,.8,.2,1) both; }
+body.launching-ready .entry-core i { animation: entry-line 2s cubic-bezier(.2,.8,.2,1) both; }
+body.launching-ready .entry-overlay > p { animation: entry-copy 2s ease both; }
+
+@keyframes entry-screen { 0%, 10% { opacity: 0; } 18%, 69% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes entry-scan { 0%, 17% { background-position: -30% 0; opacity: 0; } 26%, 65% { opacity: .75; } 72%, 100% { background-position: 140% 0; opacity: 0; } }
+@keyframes entry-core { 0%, 15% { opacity: 0; transform: scale(.72) translateY(12px); } 30%, 61% { opacity: 1; transform: scale(1) translateY(0); } 100% { opacity: 0; transform: scale(1.18) translateY(-12px); } }
+@keyframes entry-line { 0%, 26% { transform: scaleX(0); } 42%, 62% { transform: scaleX(1); } 100% { transform: scaleX(0); transform-origin: right; } }
+@keyframes entry-copy { 0%, 27% { opacity: 0; transform: translateY(6px); } 40%, 60% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-6px); } }
 
 @keyframes auth-exit {
   to { opacity: 0; transform: scale(.985); filter: blur(4px); }
@@ -251,6 +269,17 @@ h1, h2, h3, .stat b, .profile-feature b { font-family: -apple-system, BlinkMacSy
 header h1 { font-size: clamp(2rem, 3.4vw, 3.1rem); font-weight: 600; letter-spacing: -.05em; }
 .booking-intro { padding: .25rem 0 1.8rem; }
 .booking-intro h2 { max-width: none; font-size: clamp(2rem, 3.6vw, 3.25rem); font-weight: 600; letter-spacing: -.05em; line-height: 1.15; }
+.booking-intro { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(260px,.85fr); align-items: stretch; gap: 1.25rem; }
+.booking-copy { display: flex; flex-direction: column; justify-content: center; }
+.booking-copy > p:not(.eyebrow) { max-width: 420px; margin: .75rem 0 0; color: var(--subtle); font-size: .92rem; }
+.reservation-guide { padding: 1.35rem 1.5rem; border: 1px solid #0000000d; border-radius: 20px; background: #fff; box-shadow: 0 4px 18px #192d4108; transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease; }
+.reservation-guide:hover { transform: translateY(-2px); box-shadow: 0 12px 28px #192d4112; }
+.reservation-guide h3 { margin: 0; font-size: 1.15rem; }
+.reservation-guide ol { display: grid; grid-template-columns: repeat(3,1fr); gap: .5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.reservation-guide li { display: grid; gap: .35rem; color: var(--subtle); font-size: .72rem; }
+.reservation-guide li b { color: var(--blue); font-size: .68rem; letter-spacing: .04em; }
+.lab-panel .booking-date { align-self: flex-start; min-width: 155px; padding: .65rem .8rem; }
+.lab-panel .booking-date .date { min-height: 28px; }
 
 nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 nav::-webkit-scrollbar { display: none; }
@@ -261,6 +290,12 @@ nav::-webkit-scrollbar { display: none; }
 .side-select { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
 .booking-flow { align-self: start; }
 .side-select > .secondary { align-self: end; }
+.lab-status { display: flex; flex-direction: column; justify-content: center; min-height: 150px; margin: .85rem 0; padding: 1.3rem; background: linear-gradient(145deg, #f7fbff, #eaf4ff); border-color: #cbe4ff; }
+.lab-status > b { display: block; margin-top: .15rem; color: var(--blue); font-size: clamp(2.6rem,4vw,4rem); font-weight: 600; line-height: 1; letter-spacing: -.07em; }
+.lab-status > b span { color: #6e6e73; font-size: 1rem; font-weight: 500; letter-spacing: -.02em; }
+.lab-status > p { margin: .4rem 0 1.1rem; color: var(--subtle); font-size: .78rem; }
+.lab-status > div { display: flex; justify-content: space-between; padding-top: .8rem; border-top: 1px solid #b9dcff; color: var(--subtle); font-size: .75rem; }
+.lab-status strong { color: var(--ink); }
 .time-picker { display: grid; gap: .35rem; }
 .time-picker h3 { margin: 0; font-size: 1.05rem; }
 .time-picker .sub { margin: 0 0 .8rem; }
@@ -280,9 +315,14 @@ nav::-webkit-scrollbar { display: none; }
 @media (max-width: 900px) {
   .side-select { height: auto; display: grid; grid-template-rows: none; }
   .side-select > .secondary { align-self: auto; }
+  .booking-intro { grid-template-columns: 1fr; }
+  .lab-status { min-height: 0; }
 }
 
 @media (max-width: 700px) {
   .booking-intro h2 { font-size: clamp(2rem, 10vw, 2.7rem); }
   .side-select { display: grid; }
+  .reservation-guide { padding: 1.15rem; }
+  .lab-panel .panel-head { display: grid; }
+  .lab-panel .booking-date { width: 100%; }
 }
