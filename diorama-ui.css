@@ -46,7 +46,7 @@ input,select,textarea{border-color:var(--color-border-subtle);border-radius:var(
   body .nav-btn{width:100%;min-height:40px;padding:8px 9px}
   body .profile{display:flex;margin-top:auto;padding:14px 7px 8px}
   body .app-language{order:0;margin:0 7px 10px}
-  body .side>.link-btn{display:block;margin:0 7px;padding:7px 0}
+  body .side>.link-btn:not(.admin-only){display:block;margin:0 7px;padding:7px 0}
   body .main{padding:26px 22px 42px}
   body .main>header{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--color-border-subtle)}
   body .main>header h1{font-size:1.65rem}
@@ -57,6 +57,34 @@ input,select,textarea{border-color:var(--color-border-subtle);border-radius:var(
   body .reservation-guide ol{grid-template-columns:repeat(3,minmax(0,1fr))}
   body .side-select{grid-template-columns:1fr 1fr}
   body .side-select>.booking-flow{grid-column:1/-1}
+  body .agent-workspace,body .device-layout{grid-template-columns:1fr}
+}
+
+/* The preview surface is high-DPI, so retain the workspace rail down to a compact 480px canvas.
+   Only phone-width canvases return to the compact horizontal navigation. */
+@media (min-width:480px) and (max-width:640px){
+  body .app{display:grid;grid-template-columns:148px minmax(0,1fr);min-height:100vh}
+  body .side{position:sticky;top:0;z-index:10;display:flex;flex-direction:column;align-items:stretch;width:auto;height:100vh;min-height:0;padding:14px 8px;border-right:1px solid var(--color-border-subtle);border-bottom:0;background:var(--color-surface)}
+  body .logo{display:flex;padding:3px 6px 16px;font-size:.68rem}
+  body .logo img{width:19px;height:19px}
+  body .side nav{display:grid;flex:0;overflow:visible;padding:0}
+  body .nav-btn{width:100%;min-height:38px;padding:7px 6px;font-size:.72rem}
+  body .nav-code{display:block;width:14px;font-size:.56rem}
+  body .profile{display:flex;margin-top:auto;padding:12px 6px 6px}
+  body .profile b{font-size:.7rem}
+  body .app-language{order:0;margin:0 6px 8px}
+  body .side>.link-btn:not(.admin-only){display:block;margin:0 6px;padding:6px 0;font-size:.68rem}
+  body .main{padding:20px 16px 34px}
+  body .main>header{margin-bottom:16px;padding-bottom:13px;border-bottom:1px solid var(--color-border-subtle)}
+  body .main>header h1{font-size:1.38rem}
+  body .booking{grid-template-columns:1fr}
+  body .booking-intro{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px}
+  body .booking-intro h2{font-size:1.58rem;line-height:1.1}
+  body .reservation-guide{width:100%;min-width:0;padding:12px}
+  body .reservation-guide ol{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  body .reservation-guide li{font-size:.62rem}
+  body .side-select{grid-template-columns:1fr}
+  body .side-select>.booking-flow{grid-column:auto}
   body .agent-workspace,body .device-layout{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;transition-duration:1ms!important}}
