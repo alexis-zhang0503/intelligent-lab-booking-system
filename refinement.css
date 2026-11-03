@@ -478,7 +478,8 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
 .device-legend { display: flex; flex-wrap: wrap; gap: .72rem; color: var(--subtle); font-size: .75rem; }
 .device-legend i { display: inline-block; width: .56rem; height: .56rem; margin-right: .24rem; border-radius: 50%; background: var(--green); }
 .device-legend i.bad { background: var(--red); }
-.device-console { display: grid; height: 100%; grid-template-rows: auto minmax(0, 1fr); gap: 1rem; }
+.device-console { display: flex; align-self: stretch; min-width: 0; }
+.device-console > .device-actions { flex: 1; margin: 0; }
 .device-actions { padding: 1.35rem; background: linear-gradient(145deg, #fff, #eef7ff); border-color: #cbe4ff; }
 .device-actions h2 { margin: 0; font-size: 1.35rem; }
 .device-actions p:not(.eyebrow) { margin: .62rem 0 1.1rem; color: var(--subtle); font-size: .83rem; line-height: 1.55; }
@@ -595,3 +596,17 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
 
 .admin-overview-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media(max-width:700px) { .admin-overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Compact record modules; expand on demand without losing filters or actions. */
+.collapsible-module { padding: 0; overflow: hidden; }
+.module-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.35rem 1.5rem; cursor: pointer; list-style: none; }
+.module-summary::-webkit-details-marker { display: none; }
+.module-summary:focus-visible { outline: 2px solid var(--blue); outline-offset: -4px; border-radius: inherit; }
+.module-summary h2 { margin: 0; }
+.module-toggle { display: flex; align-items: center; gap: .65rem; flex-shrink: 0; color: var(--blue); font-size: .8rem; font-weight: 600; }
+.module-toggle i { font-style: normal; font-size: 1.2rem; transition: transform .18s ease; }
+.collapsible-module[open] > .module-summary { border-bottom: 1px solid var(--line); }
+.collapsible-module[open] > .module-summary .module-toggle i { transform: rotate(180deg); }
+.module-content { padding: 1.25rem 1.5rem 1.5rem; }
+.module-content > .sub { margin: 0 0 1rem; }
+@media(max-width:700px) { .module-summary { padding: 1.1rem; } .module-content { padding: 1.1rem; } .module-toggle { gap: .35rem; font-size: .75rem; } }
