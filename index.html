@@ -8,7 +8,7 @@
   <title>智能实验室预约系统</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="refinement.css?v=20261103-12">
+  <link rel="stylesheet" href="refinement.css?v=20261103-13">
 </head>
 <body>
   <div class="orb orb-a"></div><div class="orb orb-b"></div>
@@ -38,8 +38,8 @@
   <div id="faultTooltip" class="fault-tooltip" role="tooltip" hidden><p id="faultTooltipDevice" class="eyebrow"></p><h3>故障现象或原因</h3><p id="faultTooltipDescription"></p><small id="faultTooltipMeta"></small></div>
   <dialog id="repairModal"><form id="repairForm"><div class="modal-title"><div><p class="eyebrow">RESOLUTION RECORD</p><h2>记录维修处理</h2></div><button class="x" type="button" id="closeRepairModal" aria-label="关闭">×</button></div><p class="fault-form-intro" id="repairDeviceLabel"></p><div class="fault-field"><label for="repairText"><span>处理说明（选填）</span><em id="repairCount">0 / 120</em></label><textarea id="repairText" maxlength="120" aria-describedby="repairHelp repairError" placeholder="例如：已更换网线并确认网络恢复"></textarea><small id="repairHelp">处理说明可不填写，填写时最多 120 个字符。</small><p id="repairError" class="field-error" role="alert" hidden></p></div><button id="submitRepair" class="primary">完成处理并恢复设备 <span>→</span></button></form></dialog>
   <dialog id="issueDetailModal"><div class="issue-detail"><div class="modal-title"><div><p id="detailDevice" class="eyebrow"></p><h2>故障维修档案</h2></div><button class="x" type="button" id="closeIssueDetail" aria-label="关闭">×</button></div><p id="detailState" class="detail-state"></p><div id="detailTimeline" class="detail-timeline"></div></div></dialog>
-  <dialog id="inviteModal"><form id="inviteForm"><div class="modal-title"><div><p class="eyebrow">ADMIN INVITATION</p><h2>生成管理员邀请码</h2></div><button class="x" type="button" id="closeInviteModal" aria-label="关闭">×</button></div><p>邀请码仅显示一次。请通过可信方式发送给新管理员</p><label>有效期<select id="inviteDays"><option value="1">1 天</option><option value="7" selected>7 天</option><option value="30">30 天</option></select></label><button class="primary">生成邀请码 <span>→</span></button><div id="inviteResult" hidden><label>邀请码<input id="inviteCodeOutput" readonly></label><button id="copyInviteCode" class="secondary wide" type="button">复制邀请码</button></div></form></dialog>
+  <dialog id="inviteModal"><form id="inviteForm"><div class="modal-title"><div><p class="eyebrow">ADMIN INVITATION</p><h2>生成管理员邀请码</h2></div><button class="x" type="button" id="closeInviteModal" aria-label="关闭">×</button></div><p>邀请码仅显示一次。请通过可信方式发送给新管理员</p><label>有效期<select id="inviteDays"><option value="1">1 天</option><option value="7" selected>7 天</option><option value="30">30 天</option></select></label><button class="primary">生成邀请码 <span>→</span></button><div id="inviteResult" hidden><label>邀请码<input id="inviteCodeOutput" readonly></label><p id="inviteExpiry" class="sub"></p><button id="copyInviteCode" class="secondary wide" type="button">复制邀请码</button></div></form></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261103-12"></script>
+  <script type="module" src="app.js?v=20261103-13"></script>
 </body>
 </html>
