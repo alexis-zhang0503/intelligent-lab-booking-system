@@ -24,6 +24,8 @@ Object.assign(EN,{"预约管理":"Reservation management","全部预约":"All re
 let adminBookingFilters={date:"",status:"",query:""};
 Object.assign(EN,{"故障现象或原因（选填）":"Fault symptom or cause (optional)","处理说明（选填）":"Repair outcome (optional)","故障说明可不填写，填写时最多 120 个字符。":"Issue details are optional, up to 120 characters.","处理说明可不填写，填写时最多 120 个字符。":"Repair notes are optional, up to 120 characters.","未填写故障说明":"No issue details provided","删除记录":"Delete record","修复满 24 小时后可删除":"Can be deleted 24 hours after repair","确认删除这条已修复的故障记录？":"Delete this resolved issue record?","故障记录已删除。":"Issue record deleted.","该记录尚未修复满 24 小时，暂不能删除。":"This record cannot be deleted until 24 hours after repair.","故障记录已删除，但状态刷新失败，请重新刷新。":"Issue record deleted, but refreshing failed. Please refresh again.","选填，不填写也可以直接提交":"Optional. You can submit without entering any text.","修复完成满 24 小时后，管理员可以删除记录":"Administrators can delete records 24 hours after repair"});
 Object.assign(EN,{"总览与统计":"Overview and reports","设备管理中心":"Device management","在这里管理设备状态、学生预约与故障记录":"Manage device status, student reservations and issue records here","查看预约管理":"View reservations","查看故障维护":"View maintenance"});
+Object.assign(EN,{"请选择 1、7 或 30 天有效期。":"Choose a validity of 1, 7 or 30 days.","邀请码生成结果异常，请重试。":"The invitation response was invalid. Please try again.","生成中…":"Generating…","已生成，请先保存当前邀请码。":"Invitation generated. Save this code before continuing.","复制失败，请手动复制邀请码。":"Copy failed. Please copy the invitation manually.","请先生成邀请码。":"Generate an invitation first.","邀请码已生成，请及时保存。":"Invitation generated. Save it now.","生成新邀请码":"Generate another invitation","生成新的邀请码前，请确认已保存当前邀请码。是否继续？":"Have you saved the current invitation? Generate another one?","到期时间":"Expires at"});
+let inviteGenerationPending=false;
 const ZH=Object.fromEntries(Object.entries(EN).map(([zh,en])=>[en,zh]));
 let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9, bookingRequestKey=null, scheduleCandidates=[], adminMetrics=null, agentResponse=null, faultImpactPlan=null, faultResponseMetrics=null;
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
@@ -464,16 +466,35 @@ async function registerAdministrator(event){
 /** Generates one time-limited code through the administrator-only database function. */
 async function createAdministratorInvite(event){
   event.preventDefault();
-  let days=Number(q("#inviteDays").value),expiry=new Date();expiry.setDate(expiry.getDate()+days);
-  let {data,error}=await supabase.rpc("create_admin_invite",{invite_expires_at:expiry.toISOString()});
-  if(error){toast(cloudError(error),"error");return}
-  q("#inviteCodeOutput").value=data[0].invite_code;
-  q("#inviteResult").hidden=false;
+  if(!admin()||inviteGenerationPending)return;
+  if(q("#inviteCodeOutput").value&&!window.confirm(tr("生成新的邀请码前，请确认已保存当前邀请码。是否继续？")))return;
+  let days=Number(q("#inviteDays").value),button=event.target.querySelector('button.primary');
+  if(![1,7,30].includes(days)){toast("请选择 1、7 或 30 天有效期。","error");return}
+  let actorId=user().id;inviteGenerationPending=true;button.disabled=true;let originalLabel=button.textContent;
+  button.textContent=tr("生成中…");q("#inviteDays").disabled=true;
+  try{
+    let {data,error}=await supabase.rpc("create_admin_invite_for_days",{p_valid_days:days});
+    if(error)throw error;
+    if(user()?.id!==actorId||!admin())return;
+    let invitation=Array.isArray(data)?data[0]:data;
+    if(!invitation||!/^NJUPT-[A-F0-9]{12}$/.test(invitation.invite_code||"")||!Number.isFinite(Date.parse(invitation.expires_at)))throw new Error(tr("邀请码生成结果异常，请重试。"));
+    q("#inviteCodeOutput").value=invitation.invite_code;
+    q("#inviteExpiry").textContent=`${tr("到期时间")}：${new Date(invitation.expires_at).toLocaleString(locale(),{hour12:false})}`;
+    q("#inviteResult").hidden=false;
+    toast("邀请码已生成，请及时保存。");
+  }catch(error){toast(cloudError(error),"error")}
+  finally{inviteGenerationPending=false;button.disabled=false;button.textContent=q("#inviteCodeOutput").value?tr("生成新邀请码"):originalLabel;q("#inviteDays").disabled=false}
 }
 
-function openInviteDialog(){q("#inviteResult").hidden=true;q("#inviteModal").showModal()}
+function openInviteDialog(){
+  if(!admin())return;
+  q("#inviteResult").hidden=!q("#inviteCodeOutput").value;
+  q("#inviteForm button.primary").disabled=inviteGenerationPending;
+  q("#inviteModal").showModal();
+}
 async function copyInvitationCode(){
-  try{await navigator.clipboard.writeText(q("#inviteCodeOutput").value);toast("邀请码已复制。")}catch{q("#inviteCodeOutput").select()}
+  let code=q("#inviteCodeOutput").value;if(!code){toast("请先生成邀请码。","error");return}
+  try{await navigator.clipboard.writeText(code);toast("邀请码已复制。")}catch{q("#inviteCodeOutput").select();toast("复制失败，请手动复制邀请码。","error")}
 }
 
 /** Saves one editable profile value without ever exposing an Auth administrator key. */
@@ -550,6 +571,7 @@ async function logoutCloud(){
     if(error)throw error;
     db={users:[],devices:[],bookings:[],faults:[],session:null};
     adminBookingFilters={date:"",status:"",query:""};
+    q("#inviteCodeOutput").value="";q("#inviteExpiry").textContent="";q("#inviteResult").hidden=true;q("#inviteModal").close();
     desks.clear();adminMetrics=null;agentResponse=null;faultImpactPlan=null;faultResponseMetrics=null;scheduleCandidates=[];
     clearTimeout(scheduleStatusRefresh.timer);
     render();
