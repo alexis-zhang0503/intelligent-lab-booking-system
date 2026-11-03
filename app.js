@@ -1,3 +1,4 @@
+import { registrationError, authErrorMessage } from "./web/core/authRules.js";
 import { DEVICE_NUMBERS as DESKS, HOURLY_SLOTS as SLOTS, hourToMinutes, hourlyRange } from "./web/core/hourlyRules.js";
 import { supabase } from "./web/core/supabaseClient.js";
 
@@ -135,15 +136,13 @@ function openModal(selectedDesk){q("#faultDesk").innerHTML=DESKS.map(n=>`<option
 function go(){qa("[data-go]").forEach(b=>b.onclick=()=>{page=b.dataset.go;render()});cancelBind()}
 function download(name,text){let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/plain;charset=utf-8"}));a.download=name;a.click();URL.revokeObjectURL(a.href);toast(language==="en"?`Downloaded ${name}`:`已下载 ${name}`)}
 /** Downloads one daily count.txt report using nine assignment-defined hourly sections. */
-function countFile(){let en=language==="en",out=[en?"Intelligent Lab Reservation System - Daily Usage":"智能实验室预约系统 - 每日使用情况统计",en?"Total devices: 40":"设备总数：40 台",en?"Hours: 08:00–17:00 (hourly)":"开放时段：08:00-17:00（每小时）",""];let x={date:today(),count:db.bookings.filter(b=>b.date===today()&&b.status!=="cancelled").length};out.push(en?`${x.date} (${fd(x.date)}): ${x.count} reservations`:`${x.date}（${fd(x.date)}）：${x.count} 人次`);SLOTS.forEach(slot=>{let a=db.bookings.filter(b=>b.date===x.date&&bookingSlots(b).includes(slot)&&b.status!=="cancelled"),names=a.map(b=>`#${String(b.deskNo).padStart(2,"0")} ${b.userName}`).join(en?"; ":"；");out.push(en?`  ${fh(slot)}: ${a.length} reservation${a.length===1?"":"s"}${a.length?` (${names})`:""}`:`  ${fh(slot)}：${a.length} 人次${a.length?`（${names}）`:""}`)});download("count.txt",out.join("\\n"))}
-function errorFile(){let en=language==="en",out=[en?"Intelligent Lab Reservation System - Device Issues":"智能实验室预约系统 - 设备故障记录",""];if(!db.faults.length)out.push(en?"No issue records yet.":"暂无故障记录。");db.faults.forEach((x,i)=>{let state=x.status==="resolved"?tr("已处理"):x.status==="reported"?tr("待处理"):tr("故障中");out.push(en?`${i+1}. Device #${String(x.deskNo).padStart(2,"0")} | Status: ${state} | Reported by: ${x.reporter||tr("管理员")}\n   Description: ${systemFaultText(x.description)}`:`${i+1}. 设备 #${String(x.deskNo).padStart(2,"0")} | 状态：${state} | 上报人：${x.reporter||tr("管理员")}\n   描述：${x.description}`)});download("error.txt",out.join("\\n"))}
+function countFile(){let en=language==="en",out=[en?"Intelligent Lab Reservation System - Daily Usage":"智能实验室预约系统 - 每日使用情况统计",en?"Total devices: 40":"设备总数：40 台",en?"Hours: 08:00–17:00 (hourly)":"开放时段：08:00-17:00（每小时）",""];let x={date:today(),count:db.bookings.filter(b=>b.date===today()&&b.status!=="cancelled").length};out.push(en?`${x.date} (${fd(x.date)}): ${x.count} reservations`:`${x.date}（${fd(x.date)}）：${x.count} 人次`);SLOTS.forEach(slot=>{let a=db.bookings.filter(b=>b.date===x.date&&bookingSlots(b).includes(slot)&&b.status!=="cancelled"),names=a.map(b=>`#${String(b.deskNo).padStart(2,"0")} ${b.userName}`).join(en?"; ":"；");out.push(en?`  ${fh(slot)}: ${a.length} reservation${a.length===1?"":"s"}${a.length?` (${names})`:""}`:`  ${fh(slot)}：${a.length} 人次${a.length?`（${names}）`:""}`)});download("count.txt",out.join("\n"))}
+function errorFile(){let en=language==="en",out=[en?"Intelligent Lab Reservation System - Device Issues":"智能实验室预约系统 - 设备故障记录",""];if(!db.faults.length)out.push(en?"No issue records yet.":"暂无故障记录。");db.faults.forEach((x,i)=>{let state=x.status==="resolved"?tr("已处理"):x.status==="reported"?tr("待处理"):tr("故障中");out.push(en?`${i+1}. Device #${String(x.deskNo).padStart(2,"0")} | Status: ${state} | Reported by: ${x.reporter||tr("管理员")}\n   Description: ${systemFaultText(x.description)}`:`${i+1}. 设备 #${String(x.deskNo).padStart(2,"0")} | 状态：${state} | 上报人：${x.reporter||tr("管理员")}\n   描述：${x.description}`)});download("error.txt",out.join("\n"))}
 qa("[data-tab]").forEach(b=>b.onclick=()=>{let r=b.dataset.tab==="register";qa("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));q("#loginForm").hidden=r;q("#registerForm").hidden=!r;q("#adminRegisterForm").hidden=true});
 qa("[data-language]").forEach(button=>button.onclick=()=>setLanguage(button.dataset.language));
-/** Public registration always creates a student; administrator roles never come from this form. */
-q("#registerForm").onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),loginId=f.get("loginId").trim(),name=f.get("name").trim();if(!name){toast("请输入姓名。","error");return}if(db.users.some(x=>x.loginId===loginId)){toast("该账号已注册，请直接登录。","error");return}let u={id:id("user"),name,loginId,password:f.get("password"),role:"student"};db.users.push(u);db.session=u.id;save();page="dashboard";toast("注册成功。");startSession()};
-q("#loginForm").onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),u=db.users.find(x=>x.loginId===f.get("loginId").trim()&&x.password===f.get("password"));if(!u){toast("账号或密码不正确。","error");return}db.session=u.id;save();page="dashboard";startSession()};
-q("#faultForm").onsubmit=e=>{e.preventDefault();let n=+q("#faultDesk").value;if(fault(n)){toast("该设备已处于故障状态。","error");return}db.faults.push({id:id("fault"),deskNo:n,description:q("#faultText").value.trim(),reporter:user().name,reporterId:user().id,status:admin()?"faulty":"reported",createdAt:new Date().toISOString()});save();e.target.reset();q("#faultModal").close();toast(admin()?"设备已标记故障。":"故障已上报。");render()};
-q("#closeModal").onclick=()=>q("#faultModal").close();q("#closeRepairModal").onclick=()=>q("#repairModal").close();q("#closeIssueDetail").onclick=()=>q("#issueDetailModal").close();q("#logout").onclick=()=>{db.session=null;save();desks.clear();render()};
+q("#closeModal").onclick=()=>q("#faultModal").close();
+q("#closeRepairModal").onclick=()=>q("#repairModal").close();
+q("#closeIssueDetail").onclick=()=>q("#issueDetailModal").close();
 
 /** Maps a public student ID to an internal Auth email without exposing it in the UI. */
 function studentEmail(loginId){
@@ -168,10 +167,16 @@ function toCloudState(profile,profiles,devices,reservations,reports,usageRecords
 
 /** Loads the signed-in user's permitted cloud data; RLS controls every response. */
 async function refreshCloud(renderAfter=true){
-  let {data:{session}}=await supabase.auth.getSession();
+  let {data:{session},error:sessionError}=await supabase.auth.getSession();
+  if(sessionError)throw sessionError;
   if(!session){db={users:[],devices:[],bookings:[],faults:[],session:null};if(renderAfter)render();return false}
   let {data:profile,error:profileError}=await supabase.from("profiles").select("id,login_id,display_name,role,active").eq("id",session.user.id).maybeSingle();
-  if(profileError||!profile){toast("Account profile is not ready. Please try again.","error");return false}
+  if(profileError||!profile){
+    db={users:[],devices:[],bookings:[],faults:[],session:null};
+    render();
+    toast(profileError?cloudError(profileError):(language==="en"?"Account profile is not ready. Contact the administrator.":"账号资料尚未就绪，请联系管理员检查账号资料配置。"),"error");
+    return false;
+  }
   if(!profile.active){await supabase.auth.signOut();db={users:[],devices:[],bookings:[],faults:[],session:null};toast("This account has been deactivated.","error");if(renderAfter)render();return false}
   let [devicesResult,reservationsResult,reportsResult,profilesResult,usageResult]=await Promise.all([
     supabase.from("devices").select("number,status").order("number"),
@@ -204,7 +209,7 @@ async function loadUsageRecords(){
   return result;
 }
 
-function cloudError(error){console.warn("Supabase request failed",error);return tr("请求未完成，请稍后重试。")}
+function cloudError(error){console.warn("Supabase request failed",error);return authErrorMessage(error,language)}
 
 /** Calls the atomic server function, which rejects a reservation race safely. */
 async function book(){
@@ -301,15 +306,21 @@ function bindFaultForm(){
 
 async function registerCloud(event){
   event.preventDefault();
-  let form=new FormData(event.target),loginId=form.get("loginId").trim(),name=form.get("name").trim(),password=form.get("password");
-  if(!name){toast("请输入姓名。","error");return}
+  const target=event.target,button=target.querySelector('button[type="submit"],button.primary');
+  if(button.disabled)return;
+  const form=new FormData(target),loginId=form.get("loginId").trim(),name=form.get("name").trim(),password=form.get("password");
+  const invalid=registrationError(name,password,language);
+  if(invalid){toast(invalid,"error");return}
   let email;
-  try{email=studentEmail(loginId)}catch(error){toast(error.message,"error");return}
-  let {data,error}=await supabase.auth.signUp({email,password,options:{data:{login_id:loginId,display_name:name}}});
-  if(error){toast(cloudError(error),"error");return}
-  if(!data.session){toast("Disable Confirm email in Supabase before student testing.","error");return}
-  await new Promise(resolve=>setTimeout(resolve,250));
-  if(await refreshCloud(false)){page="dashboard";toast("注册成功。");startSession()}
+  try{email=studentEmail(loginId)}catch(error){toast(language==="en"?error.message:"学号需要 2–20 位字母、数字、点、横线或下划线。","error");return}
+  button.disabled=true;
+  try{
+    const {data,error}=await supabase.auth.signUp({email,password,options:{data:{login_id:loginId,display_name:name}}});
+    if(error){toast(cloudError(error),"error");return}
+    if(!data.session){toast(language==="en"?"Account created but email confirmation is required. Contact the project administrator.":"账号已创建，但云端要求邮箱验证，请联系项目管理员。","error");return}
+    if(await refreshCloud(false)){page="dashboard";toast("注册成功。");startSession()}
+  }catch(error){toast(cloudError(error),"error")}
+  finally{button.disabled=false}
 }
 
 /** Switches between the ordinary student and invitation-only administrator forms. */
@@ -324,16 +335,23 @@ function showAuthForm(form){
 /** Signs up an administrator only when the database trigger accepts the supplied one-time code. */
 async function registerAdministrator(event){
   event.preventDefault();
-  let form=new FormData(event.target),name=form.get("name").trim(),email=form.get("email").trim().toLowerCase(),password=form.get("password"),inviteCode=form.get("inviteCode").trim().toUpperCase();
-  if(!name||!email||!inviteCode){toast("Complete every field to continue.","error");return}
-  let {data,error}=await supabase.auth.signUp({email,password,options:{data:{login_id:email,display_name:name,admin_invite_code:inviteCode}}});
-  if(error){toast(cloudError(error),"error");return}
-  if(!data.session){toast("Disable Confirm email in Supabase before testing.","error");return}
-  await new Promise(resolve=>setTimeout(resolve,250));
-  if(await refreshCloud(false)){
-    if(!admin()){await supabase.auth.signOut();toast("The invitation was not accepted.","error");return}
-    page="dashboard";toast("Administrator account created.");startSession();
-  }
+  const target=event.target,button=target.querySelector('button.primary');
+  if(button.disabled)return;
+  const form=new FormData(target),name=form.get("name").trim(),email=form.get("email").trim().toLowerCase(),password=form.get("password"),inviteCode=form.get("inviteCode").trim().toUpperCase();
+  const invalid=registrationError(name,password,language);
+  if(invalid){toast(invalid,"error");return}
+  if(!email||!inviteCode){toast(language==="en"?"Complete every field to continue.":"请填写邮箱和管理员邀请码。","error");return}
+  button.disabled=true;
+  try{
+    const {data,error}=await supabase.auth.signUp({email,password,options:{data:{login_id:email,display_name:name,admin_invite_code:inviteCode}}});
+    if(error){toast(cloudError(error),"error");return}
+    if(!data.session){toast(language==="en"?"Check your email to confirm your account before signing in.":"请先通过邮箱验证账号，再登录。","error");return}
+    if(await refreshCloud(false)){
+      if(!admin()){await logoutCloud();toast(language==="en"?"The invitation was not accepted.":"管理员邀请码未被接受，请联系管理员。","error");return}
+      page="dashboard";toast(language==="en"?"Administrator account created.":"管理员账号注册成功。");startSession();
+    }
+  }catch(error){toast(cloudError(error),"error")}
+  finally{button.disabled=false}
 }
 
 /** Generates one time-limited code through the administrator-only database function. */
@@ -397,22 +415,38 @@ document.addEventListener("pointerout",event=>{if(event.target.closest("#content
 
 async function loginCloud(event){
   event.preventDefault();
-  let form=new FormData(event.target),identity=form.get("loginId").trim(),password=form.get("password"),email;
+  const target=event.target,button=target.querySelector('button.primary');
+  if(button.disabled)return;
+  const form=new FormData(target),identity=form.get("loginId").trim(),password=form.get("password");
+  button.disabled=true;
   try{
+    let email;
     if(identity.includes("@"))email=identity;
     else{
-      let {data,error}=await supabase.rpc("resolve_student_auth_email",{entered_login_id:identity});
-      if(error)throw error;
-      if(!data)throw new Error("Incorrect ID or password.");
-      email=data;
+      const {data,error}=await supabase.rpc("resolve_student_auth_email",{entered_login_id:identity});
+      // Older deployments have no lookup RPC. Their existing student accounts
+      // already use this canonical Auth email; password verification remains server-side.
+      if(error&&!['PGRST202','42883'].includes(error.code))throw error;
+      email=error?studentEmail(identity):data;
+      if(!email)throw {code:'invalid_credentials'};
     }
-  }catch(error){toast(error.message,"error");return}
-  let {error}=await supabase.auth.signInWithPassword({email,password});
-  if(error){toast("账号或密码不正确。","error");return}
-  if(await refreshCloud(false)){page="dashboard";startSession()}
+    const {error}=await supabase.auth.signInWithPassword({email,password});
+    if(error){toast(cloudError(error),"error");return}
+    if(await refreshCloud(false)){page="dashboard";startSession()}
+  }catch(error){toast(cloudError(error),"error")}
+  finally{button.disabled=false}
 }
 
-async function logoutCloud(){await supabase.auth.signOut();desks.clear();await refreshCloud()}
+async function logoutCloud(){
+  try{
+    const {error}=await supabase.auth.signOut();
+    if(error)throw error;
+    db={users:[],devices:[],bookings:[],faults:[],session:null};
+    desks.clear();adminMetrics=null;agentResponse=null;faultImpactPlan=null;faultResponseMetrics=null;scheduleCandidates=[];
+    clearTimeout(scheduleStatusRefresh.timer);
+    render();
+  }catch(error){toast(cloudError(error),"error")}
+}
 
 function subscribeCloud(){
   let timer;
@@ -441,8 +475,8 @@ async function bootCloud(){
   q("#closeInviteModal").onclick=()=>q("#inviteModal").close();
   q("#inviteForm").onsubmit=createAdministratorInvite;
   q("#copyInviteCode").onclick=copyInvitationCode;
-  subscribeCloud();
-  await refreshCloud();
+  render();
+  try{await refreshCloud();subscribeCloud()}catch(error){toast(cloudError(error),"error")}
 }
 
 bootCloud();
