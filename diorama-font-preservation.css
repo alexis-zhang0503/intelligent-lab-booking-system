@@ -1,0 +1,4 @@
+/* The Diorama workspace layer must not replace the established typeface system. */
+html,body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select,textarea,.nav-code,.desk b,.agent-presence,.agent-thread pre{font-family:inherit}
+.intro h1{font-family:"Syncopate","Noto Sans SC",sans-serif}
