@@ -131,6 +131,31 @@ html[lang="zh-CN"] .intro h1 { font-family: "ZCOOL XiaoWei", "Noto Sans SC", "Pi
 .auth-card { padding: 1.75rem; border-color: #0000000d; border-radius: 20px; background: #fff; box-shadow: 0 10px 30px #0000000d; backdrop-filter: none; }
 .tabs { margin-bottom: 1.5rem; }
 
+/* The opening signal map is derived from the laboratory's equipment grid, not a generic loading spinner. */
+body.site-entering { overflow: hidden; }
+.site-entry-overlay { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; overflow: hidden; background: #031326; opacity: 1; isolation: isolate; }
+.site-entry-overlay::before, .site-entry-overlay::after { position: absolute; content: ""; pointer-events: none; }
+.site-entry-overlay::before { inset: 0; background: radial-gradient(circle at 50% 50%, #087dff42 0, #03132600 28%), linear-gradient(90deg, #8edfff10 1px, transparent 1px), linear-gradient(#8edfff10 1px, transparent 1px); background-size: auto, 36px 36px, 36px 36px; mask-image: radial-gradient(circle, #000 0 35%, transparent 76%); }
+.site-entry-overlay::after { width: min(88vw, 880px); height: 1px; background: linear-gradient(90deg, transparent, #8cecff, transparent); box-shadow: 0 0 28px #3acbff; transform: translateY(0) scaleX(.35); }
+.site-entry-grid { position: absolute; width: min(62vw, 620px); aspect-ratio: 1; border: 1px solid #83d9ff42; border-radius: 50%; background: repeating-radial-gradient(circle, transparent 0 42px, #83d9ff1e 43px 44px), linear-gradient(90deg, #83d9ff18 1px, transparent 1px), linear-gradient(#83d9ff18 1px, transparent 1px); background-size: auto, 52px 52px, 52px 52px; box-shadow: inset 0 0 52px #0071e333, 0 0 84px #0071e326; transform: scale(.62); }
+.site-entry-grid::before, .site-entry-grid::after { position: absolute; inset: 13%; border: 1px solid #8de6ff47; border-radius: 50%; content: ""; }
+.site-entry-grid::after { inset: 29%; border-color: #8de6ff70; }
+.site-entry-core { position: relative; z-index: 1; display: grid; width: 92px; height: 92px; place-items: center; border: 1px solid #9cecffaa; border-radius: 50%; background: #0c2d50cc; box-shadow: 0 0 0 9px #61d7ff10, 0 0 52px #36caff8c; transform: scale(.72); }
+.site-entry-core img { width: 42px; height: 42px; filter: brightness(0) invert(1); }
+.site-entry-core i { position: absolute; inset: -7px; border: 1px solid #72dcff80; border-left-color: transparent; border-radius: inherit; }
+body.site-entry-ready .site-entry-overlay { animation: site-entry-fade 2s cubic-bezier(.2,.8,.2,1) both; }
+body.site-entry-ready .site-entry-overlay::before { animation: site-entry-grid-in 2s cubic-bezier(.16,.8,.2,1) both; }
+body.site-entry-ready .site-entry-overlay::after { animation: site-entry-scan 2s cubic-bezier(.2,.8,.2,1) both; }
+body.site-entry-ready .site-entry-grid { animation: site-entry-orbit 2s cubic-bezier(.16,.8,.2,1) both; }
+body.site-entry-ready .site-entry-core { animation: site-entry-core 2s cubic-bezier(.16,.8,.2,1) both; }
+body.site-entry-ready .site-entry-core i { animation: site-entry-ring 1.1s linear infinite; }
+@keyframes site-entry-fade { 0%, 78% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes site-entry-grid-in { 0% { opacity: 0; transform: scale(1.18); } 22%, 74% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(.94); } }
+@keyframes site-entry-scan { 0%, 12% { opacity: 0; transform: translateY(0) scaleX(.18); } 30%, 70% { opacity: 1; transform: translateY(0) scaleX(1); } 100% { opacity: 0; transform: translateY(0) scaleX(1.35); } }
+@keyframes site-entry-orbit { 0% { opacity: 0; transform: scale(.62) rotate(-18deg); } 26%, 76% { opacity: 1; transform: scale(1) rotate(0); } 100% { opacity: 0; transform: scale(1.14) rotate(8deg); } }
+@keyframes site-entry-core { 0%, 13% { opacity: 0; transform: scale(.72); } 30%, 73% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.08); } }
+@keyframes site-entry-ring { to { transform: rotate(360deg); } }
+
 @keyframes login-spectrum { from { background-position: 0% 50%; } to { background-position: 240% 50%; } }
 @keyframes login-ambient { 0% { transform: translate3d(-2%, -1%, 0) scale(.96); opacity: .68; } 50% { transform: translate3d(3%, 2%, 0) scale(1.05); opacity: .9; } 100% { transform: translate3d(-1%, 4%, 0) scale(1); opacity: .7; } }
 
@@ -269,6 +294,10 @@ body.launching-ready .entry-overlay > p { animation: entry-copy 2s cubic-bezier(
   .lab-panel .lab { gap: .75rem; padding-top: 1rem; }
   .lab-panel .group:nth-child(4n+3) { margin-left: 0; }
   .lab-panel .desk { min-height: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-entry-overlay, .site-entry-overlay *, .site-entry-overlay::before, .site-entry-overlay::after { animation: none !important; }
 }
 
 /* Refined type, interaction, and reservation-flow pass. */
