@@ -7,7 +7,7 @@ const vm=require('node:vm');
 function setup(){
   const nodes=new Map();
   const node=selector=>{if(!nodes.has(selector))nodes.set(selector,{value:'',innerHTML:'',dataset:{},style:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},showModal(){this.open=true},addEventListener(){},focus(){}});return nodes.get(selector)};
-  const context=vm.createContext({console,Date,Map,Set,Intl,Number,String,Math,JSON,localStorage:{getItem:()=> 'zh',setItem(){}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener(){},body:{dataset:{},classList:{contains:()=>false}}},window:{addEventListener(){}},setTimeout:()=>1,clearTimeout(){},DESKS:Array.from({length:40},(_,i)=>i+1),SLOTS:[8,9,10,11,12,13,14,15,16],supabase:{}});
+  const context=vm.createContext({console,Date,Map,Set,Intl,Number,String,Math,JSON,localStorage:{getItem:()=> 'zh',setItem(){}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener(){},body:{dataset:{},classList:{contains:()=>false}}},window:{addEventListener(){}},setTimeout:()=>1,clearTimeout(){},DESKS:Array.from({length:40},(_,i)=>i+1),SLOTS:[8,9,10,11,12,13,14,15,16],supabase:{},hourlyRange:slot=>String(slot).padStart(2,'0')+':00–'+String(Number(slot)+1).padStart(2,'0')+':00'});
   const source=fs.readFileSync(path.resolve(__dirname,'../app.js'),'utf8').replace(/^playSiteEntry\(\);$/gm,'').replace(/^import .*;\n/gm,'').replace(/\nbootCloud\(\);\s*$/,'');
   vm.runInContext(source,context);
   const run=code=>vm.runInContext(code,context);
