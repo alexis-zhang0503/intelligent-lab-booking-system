@@ -479,7 +479,7 @@ async function createAdministratorInvite(event){
     let invitation=Array.isArray(data)?data[0]:data;
     if(!invitation||!/^NJUPT-[A-F0-9]{12}$/.test(invitation.invite_code||"")||!Number.isFinite(Date.parse(invitation.expires_at)))throw new Error(tr("邀请码生成结果异常，请重试。"));
     q("#inviteCodeOutput").value=invitation.invite_code;
-    q("#inviteExpiry").textContent=`${tr("到期时间")}：${new Date(invitation.expires_at).toLocaleString(locale(),{hour12:false})}`;
+    if(q("#inviteExpiry"))q("#inviteExpiry").textContent=`${tr("到期时间")}：${new Date(invitation.expires_at).toLocaleString(locale(),{hour12:false})}`;
     q("#inviteResult").hidden=false;
     toast("邀请码已生成，请及时保存。");
   }catch(error){toast(cloudError(error),"error")}
@@ -571,7 +571,7 @@ async function logoutCloud(){
     if(error)throw error;
     db={users:[],devices:[],bookings:[],faults:[],session:null};
     adminBookingFilters={date:"",status:"",query:""};
-    q("#inviteCodeOutput").value="";q("#inviteExpiry").textContent="";q("#inviteResult").hidden=true;q("#inviteModal").close();
+    q("#inviteCodeOutput").value="";if(q("#inviteExpiry"))q("#inviteExpiry").textContent="";q("#inviteResult").hidden=true;q("#inviteModal").close();
     desks.clear();adminMetrics=null;agentResponse=null;faultImpactPlan=null;faultResponseMetrics=null;scheduleCandidates=[];
     clearTimeout(scheduleStatusRefresh.timer);
     render();
