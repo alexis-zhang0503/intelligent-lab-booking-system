@@ -1,6 +1,7 @@
 import { registrationError, authErrorMessage } from "./web/core/authRules.js";
 import { DEVICE_NUMBERS as DESKS, HOURLY_SLOTS as SLOTS, hourToMinutes, hourlyRange } from "./web/core/hourlyRules.js";
 import { supabase } from "./web/core/supabaseClient.js";
+import { playIntro } from "./web/ui/introMotion.js";
 
 // Browser storage holds language preference only; reservation data stays in Supabase.
 const LANGKEY="lab-booking-language";
@@ -74,7 +75,7 @@ function scheduleLiveTimeCheck(){clearTimeout(scheduleLiveTimeCheck.timer);if(ad
 function render(keepAuth=false){if(admin()){if(page==="reports")page="dashboard";if(["reservations","faults"].includes(page))page="lab"}refreshBookingStates();if(!user()){q("#auth").hidden=false;q("#app").hidden=true;syncLanguage();return}q("#auth").hidden=!keepAuth;q("#app").hidden=false;q("#profile").innerHTML=`<div class="avatar">${esc(user().name[0])}</div><div><b>${esc(user().name)}</b><span>${tr(admin()?"管理员":"学生")} · ${esc(user().loginId)}</span></div>`;nav();({dashboard:admin()?dashAdmin:dashStudent,lab,users,reports,faults,me,reservations:adminReservations,assistant:agentPage})[page]?.();let content=q("#content");content.classList.remove("page-enter");void content.offsetWidth;content.classList.add("page-enter");syncLanguage();scheduleStatusRefresh()}
 function startSession(){render(true);let reduce=matchMedia("(prefers-reduced-motion: reduce)").matches,overlay=q("#entryOverlay");if(reduce){q("#auth").hidden=true;return}overlay.hidden=false;overlay.setAttribute("aria-hidden","false");document.body.classList.add("launching");requestAnimationFrame(()=>document.body.classList.add("launching-ready"));setTimeout(()=>{q("#auth").hidden=true;overlay.hidden=true;overlay.setAttribute("aria-hidden","true");document.body.classList.remove("launching","launching-ready")},2000)}
 /** Runs one restrained two-second startup sequence before the login view becomes interactive. */
-function playSiteEntry(){let overlay=q("#siteEntryOverlay");if(!overlay)return;if(matchMedia("(prefers-reduced-motion: reduce)").matches){overlay.hidden=true;return}document.body.classList.add("site-entering");requestAnimationFrame(()=>document.body.classList.add("site-entry-ready"));setTimeout(()=>{overlay.hidden=true;document.body.classList.remove("site-entering","site-entry-ready")},2000)}
+function playSiteEntry(){playIntro()}
 function nav(){let list=admin()?[["dashboard","01","总览与统计"],["lab","02","设备"],["users","03","用户"],["assistant","04","AI 决策"]]:[["dashboard","01","预约"],["assistant","02","智能助手"],["reports","03","时长"],["faults","04","故障"],["me","05","我的"]];q("#nav").innerHTML=list.map(x=>`<button class="nav-btn ${page===x[0]?"active":""}" data-p="${x[0]}"><i class="nav-code">${x[1]}</i>${tr(x[2])}</button>`).join("");qa("[data-p]").forEach(b=>b.onclick=()=>{navigatePage(b.dataset.p)})}
 function head(k,t){document.body.dataset.role=admin()?"admin":"student";q("#kicker").textContent=tr(admin()?"NJUPT · 实验室管理":"NJUPT · 实验室预约");q("#title").textContent=tr(t)}
 function stats(a){return `<div class="stats">${a.map(x=>`<article class="stat"><span>${tr(x[0])}</span><b class="${x[2]||""}">${x[1]}</b></article>`).join("")}</div>`}

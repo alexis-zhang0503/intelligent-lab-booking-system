@@ -9,6 +9,8 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="refinement.css?v=20261103-13">
+  <link rel="stylesheet" href="design-system/tokens.css">
+  <link rel="stylesheet" href="v3-ui.css">
 </head>
 <body>
   <div class="orb orb-a"></div><div class="orb orb-b"></div>
@@ -29,9 +31,9 @@
     <aside class="side"><a class="logo" href="#"><img src="favicon.svg" alt="">NJUPT<span>实验室预约</span></a><nav id="nav"></nav><button id="openInvite" class="link-btn admin-only" type="button">生成管理员邀请码</button><div class="language-switch app-language" aria-label="Language"><button type="button" data-language="en">EN</button><button type="button" data-language="zh">中文</button></div><div id="profile" class="profile"></div><button id="logout" class="link-btn">退出</button></aside>
     <section class="main"><header><div><p id="kicker" class="eyebrow"></p><h1 id="title"></h1></div></header><div id="content"></div></section>
   </main>
-  <div id="siteEntryOverlay" class="site-entry-overlay" aria-hidden="true">
-    <div class="site-entry-grid" aria-hidden="true"></div>
-    <div class="site-entry-core"><img src="favicon.svg" alt=""><i></i></div>
+  <div id="siteEntryOverlay" class="v3-intro" aria-hidden="true">
+    <div class="v3-curtain v3-curtain-left"></div><div class="v3-curtain v3-curtain-right"></div>
+    <div class="v3-stage"><div class="v3-links" aria-hidden="true"></div><img class="v3-lab" src="assets/pixel/laboratory.svg" alt=""><div class="v3-tools" aria-hidden="true"><img src="assets/pixel/terminal.svg" alt=""><img src="assets/pixel/calendar.svg" alt=""><img src="assets/pixel/instrument.svg" alt=""><img src="assets/pixel/ai-scheduler.svg" alt=""></div><div class="v3-brand"><strong>LABSPACE</strong><span>INTELLIGENT LABORATORY BOOKING SYSTEM</span></div></div>
   </div>
   <div id="entryOverlay" class="entry-overlay" hidden aria-hidden="true"><div class="entry-core"><img src="favicon.svg" alt=""><span>NJUPT</span><i></i></div><p>正在进入实验室</p></div>
   <div id="bookingOverlay" class="booking-overlay" hidden aria-hidden="true"><section class="booking-confirmation" role="status" aria-live="polite"><div class="booking-check" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="m14 24 7 7 14-15"/></svg></div><p class="eyebrow">RESERVATION CONFIRMED</p><h2>预约已确认</h2><p id="bookingOverlayCopy">设备与时间已为你保留</p></section></div>
@@ -42,6 +44,7 @@
   <dialog id="issueDetailModal"><div class="issue-detail"><div class="modal-title"><div><p id="detailDevice" class="eyebrow"></p><h2>故障维修档案</h2></div><button class="x" type="button" id="closeIssueDetail" aria-label="关闭">×</button></div><p id="detailState" class="detail-state"></p><div id="detailTimeline" class="detail-timeline"></div></div></dialog>
   <dialog id="inviteModal"><form id="inviteForm"><div class="modal-title"><div><p class="eyebrow">ADMIN INVITATION</p><h2>生成管理员邀请码</h2></div><button class="x" type="button" id="closeInviteModal" aria-label="关闭">×</button></div><p>邀请码仅显示一次。请通过可信方式发送给新管理员</p><label>有效期<select id="inviteDays"><option value="1">1 天</option><option value="7" selected>7 天</option><option value="30">30 天</option></select></label><button class="primary">生成邀请码 <span>→</span></button><div id="inviteResult" hidden><label>邀请码<input id="inviteCodeOutput" readonly></label><p id="inviteExpiry" class="sub"></p><button id="copyInviteCode" class="secondary wide" type="button">复制邀请码</button></div></form></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261103-14"></script>
+  <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script type="module" src="app.js?v=20261103-15"></script>
 </body>
 </html>
