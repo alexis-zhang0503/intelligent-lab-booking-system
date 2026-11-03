@@ -22,6 +22,7 @@ Object.assign(EN,{"请选择单台设备报告故障":"Please select a single de
 Object.assign(EN,{"故障已上报，设备已停止预约。":"Issue reported. The device is now unavailable.","上报后设备立即停用，等待管理员维修":"Reports immediately disable the device pending repair","自动标记故障":"Automatically marked faulty","设备已停用；现有预约请联系管理员处理。":"The device is unavailable. Contact an administrator about existing reservations."});
 Object.assign(EN,{"预约管理":"Reservation management","全部预约":"All reservations","预约用户":"Booked by","预约状态":"Reservation status","全部状态":"All statuses","按姓名、学号或设备搜索":"Search name, student ID or device","清除筛选":"Clear filters","强制取消":"Force cancel","只能取消尚未开始的学生预约，取消后时段立即释放，记录仍保留。":"Only unstarted student reservations can be cancelled. The slot is released and the record is preserved.","确认强制取消以下学生预约？":"Force cancel this student reservation?","该预约无法强制取消，请刷新后重试。":"This reservation cannot be force cancelled. Refresh and try again.","预约已强制取消。":"Reservation force cancelled.","预约已取消，但状态刷新失败，请重新刷新。":"Reservation cancelled, but refreshing failed. Please refresh again.","管理员预约或已开始的预约不可强制取消":"Administrator reservations and started reservations cannot be force cancelled","提交时间":"Submitted at","预约操作":"Reservation action"});
 let adminBookingFilters={date:"",status:"",query:""};
+Object.assign(EN,{"故障现象或原因（选填）":"Fault symptom or cause (optional)","处理说明（选填）":"Repair outcome (optional)","故障说明可不填写，填写时最多 120 个字符。":"Issue details are optional, up to 120 characters.","处理说明可不填写，填写时最多 120 个字符。":"Repair notes are optional, up to 120 characters.","未填写故障说明":"No issue details provided","删除记录":"Delete record","修复满 24 小时后可删除":"Can be deleted 24 hours after repair","确认删除这条已修复的故障记录？":"Delete this resolved issue record?","故障记录已删除。":"Issue record deleted.","该记录尚未修复满 24 小时，暂不能删除。":"This record cannot be deleted until 24 hours after repair.","故障记录已删除，但状态刷新失败，请重新刷新。":"Issue record deleted, but refreshing failed. Please refresh again.","选填，不填写也可以直接提交":"Optional. You can submit without entering any text.","修复完成满 24 小时后，管理员可以删除记录":"Administrators can delete records 24 hours after repair"});
 const ZH=Object.fromEntries(Object.entries(EN).map(([zh,en])=>[en,zh]));
 let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9, bookingRequestKey=null, scheduleCandidates=[], adminMetrics=null, agentResponse=null, faultImpactPlan=null, faultResponseMetrics=null;
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
@@ -45,7 +46,7 @@ function locale(){return language==="en"?"en-US":"zh-CN"}
 function timesLabel(count){return language==="en"?`${count} time${count===1?"":"s"}`:`${count} 次`}
 function slotsLabel(count){return language==="en"?`${count} reservation slot${count===1?"":"s"}`:`${count} 个时段`}
 function deviceLabel(number){return language==="en"?`Device ${String(number).padStart(2,"0")}`:`#${String(number).padStart(2,"0")} 设备`}
-function systemFaultText(text){return tr(text)}
+function systemFaultText(text){return tr(text||"未填写故障说明")}
 function toast(m,type=""){let e=q("#toast");e.textContent=tr(m);e.className="show "+type;clearTimeout(toast.t);toast.t=setTimeout(()=>e.className="",2500)}
 function translateNode(node){let raw=node.nodeValue,trim=raw.trim();if(!trim)return;let symbol=trim.match(/^([*#!])\s+/),value=symbol?`${symbol[1]} ${tr(trim.slice(symbol[0].length))}`:tr(trim);if(value!==trim)node.nodeValue=raw.replace(trim,value)}
 function syncLanguage(){document.documentElement.lang=language==="en"?"en":"zh-CN";document.title=tr("智能实验室预约系统");let walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);for(let node;node=walker.nextNode();)if(!node.parentElement?.closest("script,style"))translateNode(node);qa("[placeholder],[aria-label]").forEach(el=>{for(let name of ["placeholder","aria-label"]){let value=el.getAttribute(name);if(value)el.setAttribute(name,tr(value))}});qa("[data-language]").forEach(button=>button.classList.toggle("active",button.dataset.language===language))}
@@ -161,7 +162,7 @@ function faults(){
   head(manager?"ADMIN / MAINTENANCE":"STUDENT / DEVICE REPORT",manager?"故障维护":"设备故障上报");
   if(manager){
     let open=issues.filter(item=>item.status!=="resolved"),faulty=faultyDeviceCount();
-    q("#content").innerHTML=`<section class="maintenance-hero"><div><p class="eyebrow">MAINTENANCE INBOX</p><h2>需要关注的设备</h2><p>每条记录都保留故障现象、上报人和处理状态</p></div><div class="maintenance-metrics"><div><b>${open.length}</b><span>待处理</span></div><div><b>${faulty}</b><span>故障设备</span></div></div></section>${faultResponseSummary(faultResponseMetrics)}<section class="panel issue-inbox issue-inbox-wide"><div class="section-head"><div><p class="eyebrow">LIVE RECORDS</p><h2>维修收件箱</h2></div><button id="report" class="secondary small-btn">上报设备故障</button></div>${faultList(issues)}</section>`;
+    q("#content").innerHTML=`<section class="maintenance-hero"><div><p class="eyebrow">MAINTENANCE INBOX</p><h2>需要关注的设备</h2><p>每条记录都保留故障现象、上报人和处理状态</p></div><div class="maintenance-metrics"><div><b>${open.length}</b><span>待处理</span></div><div><b>${faulty}</b><span>故障设备</span></div></div></section>${faultResponseSummary(faultResponseMetrics)}<section class="panel issue-inbox issue-inbox-wide"><div class="section-head"><div><p class="eyebrow">LIVE RECORDS</p><h2>维修收件箱</h2><p class="sub">修复完成满 24 小时后，管理员可以删除记录</p></div><button id="report" class="secondary small-btn">上报设备故障</button></div>${faultList(issues)}</section>`;
     if(faultResponseMetrics===null)loadFaultResponseMetrics();
   }else{
     q("#content").innerHTML=`<section class="panel issue-inbox student-issues"><div class="section-head"><div><p class="eyebrow">DEVICE REPORT</p><h2>我的故障记录</h2><p class="sub">提交后可在这里查看故障现象和处理进度</p></div><button id="report" class="secondary small-btn">上报设备故障</button></div>${faultList(issues)}</section>`;
@@ -170,12 +171,29 @@ function faults(){
 }
 async function loadFaultResponseMetrics(){if(!admin())return;let range=week(),{data,error}=await supabase.rpc("v2_fault_response_metrics",{p_start_date:range[0].date,p_end_date:range[6].date});if(error)return;faultResponseMetrics=data;if(page==="faults")faults()}
 function issueState(issue){return issue.status==="resolved"?'<span class="tag ok">已处理</span>':'<span class="tag bad">故障中</span>'}
-function faultList(issues){return issues.length?`<div class="issue-list">${issues.map(issue=>`<article class="issue-card"><div class="issue-signal" aria-hidden="true">!</div><div class="issue-body"><header><div><p class="eyebrow">${deviceLabel(issue.deskNo)}</p><h3>故障现象或原因</h3></div>${issueState(issue)}</header><p class="issue-description">${esc(systemFaultText(issue.description))}</p><footer><span><b>上报人</b>${esc(issue.reporter||tr("管理员"))}</span><span><b>上报时间</b>${new Date(issue.createdAt).toLocaleString(locale(),{hour12:false})}</span></footer></div><div class="issue-actions"><button class="secondary small-btn" data-issue-detail="${issue.id}">查看详情</button>${admin()&&issue.status!=="resolved"?`<button class="secondary small-btn" data-fault-plan="${issue.id}">分析影响</button><button class="secondary small-btn issue-resolve" data-fix="${issue.id}">处理并恢复</button>`:""}</div></article>`).join("")}</div>`:'<div class="issue-empty"><b>暂无故障记录。</b><span>设备状态正常时，这里会保持安静</span></div>'}
+function faultList(issues){return issues.length?`<div class="issue-list">${issues.map(issue=>`<article class="issue-card"><div class="issue-signal" aria-hidden="true">!</div><div class="issue-body"><header><div><p class="eyebrow">${deviceLabel(issue.deskNo)}</p><h3>故障现象或原因</h3></div>${issueState(issue)}</header><p class="issue-description">${esc(systemFaultText(issue.description))}</p><footer><span><b>上报人</b>${esc(issue.reporter||tr("管理员"))}</span><span><b>上报时间</b>${new Date(issue.createdAt).toLocaleString(locale(),{hour12:false})}</span></footer></div><div class="issue-actions"><button class="secondary small-btn" data-issue-detail="${issue.id}">查看详情</button>${admin()&&issue.status==="resolved"?`<small>${tr("修复满 24 小时后可删除")}</small><button class="secondary small-btn danger-btn" data-delete-issue="${issue.id}" ${canDeleteIssue(issue)?"":"disabled"}>${tr("删除记录")}</button>`:""}${admin()&&issue.status!=="resolved"?`<button class="secondary small-btn" data-fault-plan="${issue.id}">分析影响</button><button class="secondary small-btn issue-resolve" data-fix="${issue.id}">处理并恢复</button>`:""}</div></article>`).join("")}</div>`:'<div class="issue-empty"><b>暂无故障记录。</b><span>设备状态正常时，这里会保持安静</span></div>'}
+/** A resolved record becomes removable after a full 24 hours, not a date rollover. */
+function canDeleteIssue(issue){return admin()&&issue.status==="resolved"&&!!issue.resolvedAt&&Number.isFinite(Date.parse(issue.resolvedAt))&&Date.now()-Date.parse(issue.resolvedAt)>=86400000}
+async function deleteIssueRecord(issueId,button){
+  let issue=db.faults.find(item=>item.id===issueId);
+  if(!issue||!canDeleteIssue(issue)){toast("该记录尚未修复满 24 小时，暂不能删除。","error");return}
+  if(button?.disabled)return;
+  if(!window.confirm(`${tr("确认删除这条已修复的故障记录？")}\n${deviceLabel(issue.deskNo)} · ${faultTime(issue.resolvedAt)}`))return;
+  if(button)button.disabled=true;
+  try{
+    let {error}=await supabase.rpc("archive_resolved_issue",{p_issue_id:issueId});
+    if(error)throw error;
+    db.faults=db.faults.filter(item=>item.id!==issueId);faultResponseMetrics=null;
+    toast("故障记录已删除。");
+    try{if(!await refreshCloud(false))throw new Error("Refresh failed")}catch(error){toast("故障记录已删除，但状态刷新失败，请重新刷新。","error")}
+    render();
+  }catch(error){toast(cloudError(error),"error")}finally{if(button)button.disabled=false}
+}
 function faultTime(value){return new Date(value).toLocaleString(locale(),{hour12:false})}
 function openIssueDetail(issueId){
   let issue=db.faults.find(item=>item.id===issueId);if(!issue)return;
   let steps=[
-    {label:"上报",title:"收到故障说明",copy:issue.description,meta:`${issue.reporter} · ${faultTime(issue.createdAt)}`,state:"done"},
+    {label:"上报",title:"收到故障说明",copy:issue.description||"未填写故障说明",meta:`${issue.reporter} · ${faultTime(issue.createdAt)}`,state:"done"},
     {label:"自动标记故障",title:"设备已停止预约",copy:"设备状态已同步为故障，学生无法预约",meta:"",state:"done"},
     {label:"完成修复",title:issue.status==="resolved"?"设备已恢复可预约":"等待维修完成",copy:issue.status==="resolved"?(issue.repairNote||"暂无处理说明"):`修复后会在这里记录处理说明`,meta:issue.status==="resolved"?`${issue.resolver} · ${faultTime(issue.resolvedAt)}`:"",state:issue.status==="resolved"?"done":"pending"}
   ];
@@ -183,7 +201,7 @@ function openIssueDetail(issueId){
   q("#detailTimeline").innerHTML=steps.map((step,index)=>`<article class="timeline-event ${step.state}"><i>${index+1}</i><div><p>${step.label}</p><h3>${step.title}</h3><span>${esc(systemFaultText(step.copy))}</span>${step.meta?`<small>${esc(step.meta)}</small>`:""}</div></article>`).join("");
   q("#issueDetailModal").showModal();syncLanguage();
 }
-function bindIssueActions(){qa("[data-issue-detail]").forEach(button=>button.onclick=()=>openIssueDetail(button.dataset.issueDetail));qa("[data-fault-plan]").forEach(button=>button.onclick=()=>openFaultPlan(button.dataset.faultPlan));qa("[data-fix]").forEach(button=>button.onclick=()=>openRepairModal(button.dataset.fix))}
+function bindIssueActions(){qa("[data-delete-issue]").forEach(button=>button.onclick=()=>deleteIssueRecord(button.dataset.deleteIssue,button));qa("[data-issue-detail]").forEach(button=>button.onclick=()=>openIssueDetail(button.dataset.issueDetail));qa("[data-fault-plan]").forEach(button=>button.onclick=()=>openFaultPlan(button.dataset.faultPlan));qa("[data-fix]").forEach(button=>button.onclick=()=>openRepairModal(button.dataset.fix))}
 function faultSeverityLabel(value){return tr(({high:"高",medium:"中",low:"低"})[value]||"低")}
 function faultImpactMarkup(plan){let affected=plan.affected_reservations||[];return`<div class="fault-plan"><div class="fault-plan-summary"><span class="tag ${plan.severity==="high"?"bad":""}">${tr("影响等级")}：${faultSeverityLabel(plan.severity)}</span><b>${tr("受影响预约")} ${plan.affected_count}</b></div><p class="sub">${tr("设备已停用；现有预约请联系管理员处理。")}</p>${affected.length?`<div class="fault-impact-list">${affected.map(item=>{let alternatives=item.replacement_device_numbers||[];return`<article><b>${esc(item.user_name)} · ${item.reservation_date} ${fh(item.start_hour)}</b><span>${tr("同一时段可用设备")}：${alternatives.length?alternatives.map(deviceLabel).join(" · "):tr("未找到同一时段替代设备")}</span><small>${tr("需要用户确认")}</small></article>`}).join("")}</div>`:`<p class="empty">${tr("暂无受影响预约。")}</p>`}</div>`}
 async function openFaultPlan(issueId){let modal=q("#faultPlanModal"),content=q("#faultPlanContent"),form=q("#faultPlanForm");faultImpactPlan=null;content.innerHTML=`<p class="sub">${tr("正在分析故障影响…")}</p>`;form.hidden=true;modal.showModal();let {data,error}=await supabase.rpc("v2_fault_impact_analysis",{p_issue_id:issueId});if(error){content.innerHTML=`<p class="empty">${esc(cloudError(error))}</p>`;return}faultImpactPlan=data;content.innerHTML=faultImpactMarkup(data);form.hidden=true;if(data.issue_status==="faulty")content.insertAdjacentHTML("afterbegin",`<p class="tag bad">${tr("设备当前已隔离")}</p>`);syncLanguage()}
@@ -216,7 +234,7 @@ function toCloudState(profile,profiles,devices,reservations,reports,usageRecords
     users,
     devices:devices.map(item=>({number:item.number,status:item.status})),
     bookings:reservations.map(item=>({id:item.id,deskNo:item.device_number,date:item.reservation_date,hour:item.start_hour,userId:item.user_id,userName:names.get(item.user_id)||"Student",createdAt:item.created_at,cancelledAt:item.cancelled_at,status:item.status,usage:usageByReservation.get(item.id)||null})),
-    faults:reports.map(item=>({id:item.id,deskNo:item.device_number,description:item.description,reporter:names.get(item.reporter_id)||"Student",reporterId:item.reporter_id,status:item.status,createdAt:item.created_at,resolvedAt:item.resolved_at,resolver:names.get(item.resolved_by)||"Administrator",repairNote:item.resolution_note||""})),
+    faults:reports.filter(item=>!item.deleted_at).map(item=>({id:item.id,deskNo:item.device_number,description:item.description,reporter:names.get(item.reporter_id)||"Student",reporterId:item.reporter_id,status:item.status,createdAt:item.created_at,resolvedAt:item.resolved_at,resolver:names.get(item.resolved_by)||"Administrator",repairNote:item.resolution_note||""})),
     session:profile.id
   };
 }
@@ -251,7 +269,8 @@ async function refreshCloud(renderAfter=true){
 
 /** Keeps the site readable for projects that have not yet run the optional tracking migration. */
 async function loadIssueReports(){
-  let extended=await supabase.from("issue_reports").select("id,device_number,reporter_id,description,status,created_at,resolved_at,resolved_by,resolution_note");
+  let extended=await supabase.from("issue_reports").select("id,device_number,reporter_id,description,status,created_at,resolved_at,resolved_by,resolution_note,deleted_at").is("deleted_at",null);
+  if(extended.error&&/deleted_at/i.test(extended.error.message||""))extended=await supabase.from("issue_reports").select("id,device_number,reporter_id,description,status,created_at,resolved_at,resolved_by,resolution_note");
   if(!extended.error)return extended;
   if(!/resolution_note|resolved_by/i.test(extended.error.message||""))return extended;
   return supabase.from("issue_reports").select("id,device_number,reporter_id,description,status,created_at,resolved_at");
@@ -305,11 +324,11 @@ function agentPage(){let administrator=admin(),output=agentResponse?.error?`<p c
 function openRepairModal(issueId){
   let issue=db.faults.find(item=>item.id===issueId);if(!issue)return;
   q("#repairModal").dataset.issueId=issueId;
-  q("#repairDeviceLabel").textContent=`${deviceLabel(issue.deskNo)} · ${tr("故障现象或原因")}：${issue.description}`;
+  q("#repairDeviceLabel").textContent=`${deviceLabel(issue.deskNo)} · ${tr("故障现象或原因")}：${systemFaultText(issue.description)}`;
   q("#repairText").value="";q("#repairCount").textContent="0 / 120";q("#repairError").hidden=true;
   q("#repairModal").showModal();bindRepairForm();syncLanguage();
 }
-function validateRepairDescription(){let field=q("#repairText"),error=q("#repairError"),valid=field.value.trim().length>=4;error.hidden=valid;if(!valid)error.textContent=tr("处理说明至少需要 4 个字符。");field.setAttribute("aria-invalid",String(!valid));return valid}
+function validateRepairDescription(){let field=q("#repairText"),error=q("#repairError"),valid=field.value.trim().length<=120;error.hidden=valid;if(!valid)error.textContent=tr("处理说明可不填写，填写时最多 120 个字符。");field.setAttribute("aria-invalid",String(!valid));return valid}
 function bindRepairForm(){let field=q("#repairText"),count=q("#repairCount"),refresh=()=>count.textContent=`${field.value.length} / 120`;refresh();field.oninput=refresh;field.onblur=validateRepairDescription}
 async function submitRepair(event){
   event.preventDefault();let issue=db.faults.find(item=>item.id===q("#repairModal").dataset.issueId),note=q("#repairText").value.trim(),button=q("#submitRepair");
@@ -358,8 +377,8 @@ async function submitCloudIssue(event){
 
 /** Gives the short maintenance form local feedback before it reaches the database. */
 function validateFaultDescription(){
-  let field=q("#faultText"),error=q("#faultError"),valid=field.value.trim().length>=4;
-  error.hidden=valid;if(!valid)error.textContent=language==="en"?"Describe the issue in at least 4 characters.":"故障说明至少需要 4 个字符。";
+  let field=q("#faultText"),error=q("#faultError"),valid=field.value.trim().length<=120;
+  error.hidden=valid;if(!valid)error.textContent=tr("故障说明可不填写，填写时最多 120 个字符。");
   field.setAttribute("aria-invalid",String(!valid));return valid;
 }
 function bindFaultForm(){
