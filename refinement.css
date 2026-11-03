@@ -613,5 +613,5 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
 
 /* Personal statistics fill the row after merging the student pages. */
 #myHours .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#myFaultRecords { margin-top: 1.25rem; }
+#myFaultRecords { margin-top: 0; min-width: 0; }
 @media(max-width:700px) { #myHours .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
