@@ -11,7 +11,7 @@ function setup(){
  return {run,node};
 }
 test('admin rows contain escaped owner, student ID, exact date, hour and cancellation action',()=>{
- const {run}=setup();let html=run('adminReservationRows()');assert.match(html,/Student &lt;A&gt;/);assert.match(html,/B2501/);assert.match(html,/#23/);assert.ok(html.includes(run('today(1)')));assert.match(html,/09:00–10:00/);assert.match(html,/data-admin-cancel="r"/);
+ const {run}=setup();let html=run('adminReservationRows()');assert.match(html,/Student &lt;A&gt;/);assert.match(html,/B2501/);assert.match(html,/23号设备/);assert.ok(html.includes(run('today(1)')));assert.match(html,/09:00–10:00/);assert.match(html,/data-admin-cancel="r"/);
 });
 test('date, status and owner/device searches combine and preserve legacy reserved rows',()=>{
  const {run}=setup();run(`db.bookings.push({...db.bookings[0],id:'old',status:'cancelled',date:today(-1)});adminBookingFilters={date:today(1),status:'confirmed',query:'b2501'};db.bookings[0].status='reserved'`);assert.equal(run('filteredAdminBookings().length'),1);run(`adminBookingFilters.query='23'`);assert.equal(run('filteredAdminBookings().length'),1);run(`adminBookingFilters.query='unmatched'`);assert.equal(run('filteredAdminBookings().length'),0);
