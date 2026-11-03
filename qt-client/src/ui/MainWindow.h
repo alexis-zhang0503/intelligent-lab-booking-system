@@ -9,82 +9,96 @@ class QComboBox;
 class QDateEdit;
 class QLabel;
 class QLineEdit;
-class QListWidget;
+class QPushButton;
 class QStackedWidget;
 class QTableWidget;
+class QTimer;
 class QToolButton;
-class QPushButton;
+class QVBoxLayout;
 
-/**
- * @brief Native Windows interface for the C++ version of the lab reservation system.
- *
- * The window keeps rendering responsibilities in the UI layer and delegates
- * validation, conflict checks, and persistence to LabRepository.
- */
+/** Native, local-data companion to the web reservation interface. */
 class MainWindow final : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    /** @brief Constructs the main window and shows the authentication view. */
     explicit MainWindow(QWidget *parent = nullptr);
 
 private slots:
-    /** @brief Authenticates an existing account using the currently entered credentials. */
     void signIn();
-    /** @brief Creates a public student account using the registration fields. */
     void registerStudent();
-    /** @brief Returns to the authentication view after ending the local session. */
     void signOut();
-    /** @brief Updates seat appearance after the student changes date or time. */
+    void refreshDashboard();
     void refreshStudentSeats();
-    /** @brief Adds every selected available device to one hourly reservation. */
     void reserveSelectedSeats();
-    /** @brief Cancels the booking selected in the student's reservation list. */
     void cancelSelectedBooking();
     void checkInSelectedBooking();
     void checkOutSelectedBooking();
-    /** @brief Opens a small prompt that records a fault report for the selected device. */
     void reportSelectedIssue();
-    /** @brief Toggles one device fault state from the administrator's plan. */
     void toggleAdministratorDevice();
-    /** @brief Writes the daily usage report to a chosen count.txt destination. */
     void exportCountFile();
-    /** @brief Writes issue records to a chosen error.txt destination. */
     void exportErrorFile();
-    /** @brief Deactivates the student selected in the administrator account table. */
     void deactivateSelectedStudent();
-    /** @brief Resolves the issue selected in the administrator issue table. */
     void resolveSelectedIssue();
 
 private:
-    /** @brief Builds the sign-in and public-student-registration page. */
+    // A session owns one dashboard and one timer. Retire both before clearing pointers.
+    void clearPages();
     void showAuthenticationPage();
-    /** @brief Builds the student or administrator dashboard after successful sign-in. */
     void showDashboard();
-    /** @brief Creates the shared 40-device plan with the supplied click behavior. */
+    QVBoxLayout *addSection(const QString &title, const QString &description);
+    void navigateTo(int index);
+    void buildReservationPage();
+    void buildHoursPage();
+    void buildIssuesPage();
+    void buildProfilePage();
+    void buildOverviewPage();
+    void buildDevicesPage();
+    void buildUsersPage();
     QWidget *createDevicePlan(bool administratorMode);
-    /** @brief Applies text, color, enabled state, and accessible names to one device button. */
     void styleDeviceButton(QToolButton *button, int deviceNumber, bool administratorMode);
-    /** @brief Rebuilds the visible reservation list for the signed-in student. */
     void refreshBookingList();
-    /** @brief Displays a consistent short status message to the user. */
+    void refreshProfileSummary();
+    void refreshIssueTable();
+    void refreshUserTable();
+    void refreshOverview();
+    void updateAttendanceButtons();
+    void updateSelectionSummary();
+    QList<Booking> personalBookings() const;
+    QString selectedBookingId() const;
     void showMessage(const QString &message, bool error = false);
 
-    LabRepository m_repository;               ///< Owns demo data and domain rules.
-    QStackedWidget *m_pages = nullptr;        ///< Switches cleanly between authentication and dashboard views.
-    QLineEdit *m_nameInput = nullptr;         ///< Public-registration name field.
-    QLineEdit *m_loginInput = nullptr;        ///< Shared student ID or administrator ID field.
-    QLineEdit *m_passwordInput = nullptr;     ///< Shared password field.
-    QDateEdit *m_dateInput = nullptr;         ///< Student-selected calendar date.
-    QComboBox *m_hourInput = nullptr;          ///< Student-selected one-hour start time.
-    QList<QToolButton *> m_deviceButtons;     ///< Forty buttons in physical-number order.
-    QSet<int> m_selectedDevices;               ///< Student's current multiple-device selection.
+    LabRepository m_repository;
+    QStackedWidget *m_pages = nullptr;
+    QStackedWidget *m_sections = nullptr;
+    QTimer *m_refreshTimer = nullptr;
+    QList<QPushButton *> m_navigation;
+    int m_profileIndex = -1;
+    QLineEdit *m_nameInput = nullptr;
+    QLineEdit *m_loginInput = nullptr;
+    QLineEdit *m_passwordInput = nullptr;
+    QDateEdit *m_dateInput = nullptr;
+    QComboBox *m_hourInput = nullptr;
+    QList<QToolButton *> m_deviceButtons;
+    QSet<int> m_selectedDevices;
+    QLabel *m_selectionSummary = nullptr;
+    QLabel *m_labSummary = nullptr;
+    QLabel *m_todaySummary = nullptr;
+    QLabel *m_preferenceSummary = nullptr;
+    QLabel *m_hoursSummary = nullptr;
+    QLabel *m_overviewSummary = nullptr;
+    QLabel *m_bookingEmpty = nullptr;
+    QLabel *m_issueEmpty = nullptr;
+    QLabel *m_attendanceHint = nullptr;
+    QTableWidget *m_bookingTable = nullptr;
+    QTableWidget *m_overviewTable = nullptr;
+    QTableWidget *m_userTable = nullptr;
+    QTableWidget *m_issueTable = nullptr;
+    QPushButton *m_reserveButton = nullptr;
+    QPushButton *m_cancelButton = nullptr;
     QPushButton *m_checkInButton = nullptr;
     QPushButton *m_checkOutButton = nullptr;
-    void updateAttendanceButtons();
-    QListWidget *m_bookingList = nullptr;      ///< Student's active reservations for cancellation.
-    QTableWidget *m_userTable = nullptr;       ///< Administrator account list with the selected student identifier.
-    QTableWidget *m_issueTable = nullptr;      ///< Administrator issue list with the selected report identifier.
-    QLabel *m_statusLabel = nullptr;           ///< Non-modal validation and success feedback.
+    QPushButton *m_resolveButton = nullptr;
+    QPushButton *m_deactivateButton = nullptr;
+    QLabel *m_statusLabel = nullptr;
 };
