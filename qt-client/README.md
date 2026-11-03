@@ -26,3 +26,11 @@ The application stores demo records under the current Windows user's application
 ## Shared backend
 
 The current Qt client is deliberately runnable without cloud credentials. The production contract is documented in `../backend/supabase/schema.sql`: both the Qt network layer and the web client must call the same atomic reservation function when the Supabase project is configured. Until then, local file locking protects only simultaneous local writes and does **not** provide cross-device realtime behaviour.
+
+## Attendance update
+
+The local client now provides Check in (CST) and Check out actions in My reservations.
+Select a reservation to enable the applicable action. Attendance timestamps survive restarts;
+check-in is allowed only during the booked hour in Asia/Shanghai. This remains a local demo,
+with no automatic synchronization to the web client's Supabase records.
+See `../docs/attendance-fix.md` for build instructions and validation limits.

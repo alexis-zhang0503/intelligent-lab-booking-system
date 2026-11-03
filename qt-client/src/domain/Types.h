@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QDate>
+#include <QDateTime>
+#include <QTimeZone>
 #include <QString>
 
 /**
@@ -34,6 +36,8 @@ struct Booking {
     int startHour = 8;       ///< Start hour from 8 through 16; each booking lasts one hour.
     QString userId;          ///< Identifier of the student who owns this booking.
     bool cancelled = false;  ///< Whether the student cancelled the reservation.
+    QDateTime checkedInAt;
+    QDateTime checkedOutAt;
 };
 
 /** @brief Records a student or administrator report about a device. */
@@ -55,4 +59,24 @@ inline QString hourlyLabel(const int startHour)
     return QStringLiteral("%1:00–%2:00")
         .arg(startHour, 2, 10, QLatin1Char('0'))
         .arg(startHour + 1, 2, 10, QLatin1Char('0'));
+}
+
+/** The lab schedule always uses China Standard Time, even on computers abroad. */
+inline QDateTime bookingStart(const Booking &booking)
+{
+    return QDateTime(booking.date, QTime(booking.startHour, 0), QTimeZone("Asia/Shanghai"));
+}
+inline bool canCheckIn(const Booking &booking, const QDateTime &now = QDateTime::currentDateTime())
+{
+    return !booking.cancelled && !booking.checkedInAt.isValid() && !booking.checkedOutAt.isValid()
+        && now >= bookingStart(booking) && now < bookingStart(booking).addSecs(3600);
+}
+inline bool canCheckOut(const Booking &booking)
+{
+    return !booking.cancelled && booking.checkedInAt.isValid() && !booking.checkedOutAt.isValid();
+}
+
+inline QDateTime labNow()
+{
+    return QDateTime::currentDateTimeUtc().toTimeZone(QTimeZone("Asia/Shanghai"));
 }

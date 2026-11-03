@@ -6,7 +6,8 @@
   <meta name="description" content="智能实验室预约系统">
   <meta name="theme-color" content="#f5f5f7">
   <title>智能实验室预约系统</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.svg?v=20261103-logo-1" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="favicon.svg?v=20261103-logo-1">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="refinement.css?v=20261103-17">
   <link rel="stylesheet" href="design-system/tokens.css">
@@ -18,7 +19,7 @@
 <body>
   <div class="orb orb-a"></div><div class="orb orb-b"></div>
   <main id="auth" class="auth">
-    <a class="auth-brand" href="#"><img class="auth-brand-logo" src="assets/brand/njupt-lab-reservation-logo.png" alt="NJUPT Lab Reservation"></a>
+    <a class="auth-brand" href="#"><img class="auth-brand-logo" src="favicon.svg?v=20261103-logo-1" alt="NJUPT Lab Reservation"></a>
     <div class="language-switch auth-language" aria-label="Language"><button type="button" data-language="en">EN</button><button type="button" data-language="zh">中文</button></div>
     <section class="intro">
       <h1>实验室预约<br>把时间留给探索</h1>
@@ -31,14 +32,14 @@
     </section>
   </main>
   <main id="app" class="app" hidden>
-    <aside class="side"><a class="logo" href="#"><img src="favicon.svg" alt="">NJUPT<span>实验室预约</span></a><nav id="nav"></nav><button id="openInvite" class="link-btn admin-only" type="button">生成管理员邀请码</button><div class="language-switch app-language" aria-label="Language"><button type="button" data-language="en">EN</button><button type="button" data-language="zh">中文</button></div><div id="profile" class="profile"></div><button id="logout" class="link-btn">退出</button></aside>
+    <aside class="side"><a class="logo" href="#"><img src="favicon.svg?v=20261103-logo-1" alt="">NJUPT<span>实验室预约</span></a><nav id="nav"></nav><button id="openInvite" class="link-btn admin-only" type="button">生成管理员邀请码</button><div class="language-switch app-language" aria-label="Language"><button type="button" data-language="en">EN</button><button type="button" data-language="zh">中文</button></div><div id="profile" class="profile"></div><button id="logout" class="link-btn">退出</button></aside>
     <section class="main"><header><div><p id="kicker" class="eyebrow"></p><h1 id="title"></h1></div></header><div id="content"></div></section>
   </main>
   <div id="siteEntryOverlay" class="v3-intro" aria-hidden="true">
     <div class="v3-curtain v3-curtain-left"></div><div class="v3-curtain v3-curtain-right"></div>
     <div class="v3-stage"><div class="v3-links" aria-hidden="true"></div><img class="v3-lab" src="assets/pixel/laboratory.svg" alt=""><div class="v3-tools" aria-hidden="true"><img src="assets/pixel/terminal.svg" alt=""><img src="assets/pixel/calendar.svg" alt=""><img src="assets/pixel/instrument.svg" alt=""><img src="assets/pixel/ai-scheduler.svg" alt=""></div><div class="v3-brand"><strong>LABSPACE</strong><span>INTELLIGENT LABORATORY BOOKING SYSTEM</span></div></div>
   </div>
-  <div id="entryOverlay" class="entry-overlay" hidden aria-hidden="true"><div class="entry-core"><img src="favicon.svg" alt=""><span>NJUPT</span><i></i></div><p>正在进入实验室</p></div>
+  <div id="entryOverlay" class="entry-overlay" hidden aria-hidden="true"><div class="entry-core"><img src="favicon.svg?v=20261103-logo-1" alt=""><span>NJUPT</span><i></i></div><p>正在进入实验室</p></div>
   <div id="bookingOverlay" class="booking-overlay" hidden aria-hidden="true"><section class="booking-confirmation" role="status" aria-live="polite"><div class="booking-check" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="m14 24 7 7 14-15"/></svg></div><p class="eyebrow">RESERVATION CONFIRMED</p><h2>预约已确认</h2><p id="bookingOverlayCopy">设备与时间已为你保留</p></section></div>
   <dialog id="faultModal"><form id="faultForm"><div class="modal-title"><div><p class="eyebrow">DEVICE REPORT</p><h2>上报设备故障</h2></div><button class="x" type="button" id="closeModal" aria-label="关闭">×</button></div><p class="fault-form-intro">选填，不填写也可以直接提交</p><label>电脑编号<select id="faultDesk"></select></label><div class="fault-field"><label for="faultText"><span>故障现象或原因（选填）</span><em id="faultCount">0 / 120</em></label><textarea id="faultText" maxlength="120" aria-describedby="faultHelp faultError" placeholder="例如：显示器无信号、无法开机或网络无法连接"></textarea><small id="faultHelp">故障说明可不填写，填写时最多 120 个字符。</small><p id="faultError" class="field-error" role="alert" hidden></p></div><div class="fault-examples" aria-label="常见故障现象"><button type="button" data-symptom="显示器无信号">显示器无信号</button><button type="button" data-symptom="无法开机">无法开机</button><button type="button" data-symptom="网络无法连接">网络无法连接</button></div><button id="submitFault" class="primary">提交故障记录 <span>→</span></button></form></dialog>
   <dialog id="faultPlanModal"><section class="fault-plan-modal"><div class="modal-title"><div><p class="eyebrow">故障处置计划</p><h2>故障处置建议</h2></div><button class="x" type="button" id="closeFaultPlan" aria-label="关闭">×</button></div><div id="faultPlanContent"></div><form id="faultPlanForm"><label>隔离原因<textarea id="faultIsolationNote" required minlength="1" maxlength="200" placeholder="例如：确认设备无法正常使用，暂停新预约"></textarea></label><button id="confirmFaultIsolation" class="primary">确认隔离 <span>→</span></button></form></section></dialog>
@@ -48,6 +49,6 @@
   <dialog id="inviteModal"><form id="inviteForm"><div class="modal-title"><div><p class="eyebrow">ADMIN INVITATION</p><h2>生成管理员邀请码</h2></div><button class="x" type="button" id="closeInviteModal" aria-label="关闭">×</button></div><p>邀请码仅显示一次。请通过可信方式发送给新管理员</p><label>有效期<select id="inviteDays"><option value="1">1 天</option><option value="7" selected>7 天</option><option value="30">30 天</option></select></label><button class="primary">生成邀请码 <span>→</span></button><div id="inviteResult" hidden><label>邀请码<input id="inviteCodeOutput" readonly></label><p id="inviteExpiry" class="sub"></p><button id="copyInviteCode" class="secondary wide" type="button">复制邀请码</button></div></form></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script type="module" src="app.js?v=20261103-19"></script>
+  <script type="module" src="app.js?v=20261103-attendance-17"></script>
 </body>
 </html>

@@ -61,7 +61,9 @@ void LabRepository::load()
             m_bookings.append({object.value(QStringLiteral("id")).toString(), object.value(QStringLiteral("deviceNumber")).toInt(),
                                QDate::fromString(object.value(QStringLiteral("date")).toString(), Qt::ISODate),
                                object.value(QStringLiteral("startHour")).toInt(), object.value(QStringLiteral("userId")).toString(),
-                               object.value(QStringLiteral("cancelled")).toBool()});
+                               object.value(QStringLiteral("cancelled")).toBool(),
+                               QDateTime::fromString(object.value(QStringLiteral("checkedInAt")).toString(), Qt::ISODateWithMs),
+                               QDateTime::fromString(object.value(QStringLiteral("checkedOutAt")).toString(), Qt::ISODateWithMs)});
         }
         for (const QJsonValue &value : root.value(QStringLiteral("issues")).toArray()) {
             const QJsonObject object = value.toObject();
@@ -153,8 +155,8 @@ bool LabRepository::isUnavailable(const int deviceNumber, const QDate &date, con
         if (device.number == deviceNumber && device.faulty) return true;
     }
     for (const Booking &booking : m_bookings) {
-        const bool ended = booking.date < QDate::currentDate()
-            || (booking.date == QDate::currentDate() && QTime::currentTime() >= QTime(booking.startHour + 1, 0));
+        const bool ended = booking.date < labNow().date()
+            || (booking.date == labNow().date() && labNow().time() >= QTime(booking.startHour + 1, 0));
         if (isActive(booking) && !ended && booking.deviceNumber == deviceNumber && booking.date == date && booking.startHour == startHour) return true;
     }
     return false;
@@ -167,9 +169,9 @@ bool LabRepository::reserve(const QList<int> &deviceNumbers, const QDate &date, 
         if (message) *message = QStringLiteral("Only a signed-in student can make a reservation.");
         return false;
     }
-    const QTime now = QTime::currentTime();
-    const bool startedToday = date == QDate::currentDate() && startHour <= now.hour();
-    if (deviceNumbers.isEmpty() || date < QDate::currentDate() || startedToday || startHour < 8 || startHour > 16) {
+    const QTime now = labNow().time();
+    const bool startedToday = date == labNow().date() && startHour <= now.hour();
+    if (deviceNumbers.isEmpty() || date < labNow().date() || startedToday || startHour < 8 || startHour > 16) {
         if (message) *message = QStringLiteral("Choose a future date, one hourly slot, and at least one available device.");
         return false;
     }
@@ -191,14 +193,60 @@ bool LabRepository::cancel(const QString &bookingId, QString *message)
 {
     const User *sessionUser = currentUser();
     for (Booking &booking : m_bookings) {
-        if (booking.id == bookingId && sessionUser && booking.userId == sessionUser->id && isActive(booking)) {
+        if (booking.id == bookingId && sessionUser && booking.userId == sessionUser->id && isActive(booking) && !booking.checkedInAt.isValid() && QDateTime::currentDateTime() < bookingStart(booking)) {
             booking.cancelled = true;
-            if (!save(message)) return false;
+            if (!save(message)) { booking.cancelled = false; return false; }
             if (message) *message = QStringLiteral("Reservation cancelled and the device is available again.");
             return true;
         }
     }
-    if (message) *message = QStringLiteral("Only your active reservation can be cancelled.");
+    if (message) *message = QStringLiteral("Only your future reservation that has not been checked in can be cancelled.");
+    return false;
+}
+
+bool LabRepository::checkIn(const QString &bookingId, QString *message, const QDateTime &now)
+{
+    const User *user = currentUser();
+    for (Booking &booking : m_bookings) {
+        if (booking.id != bookingId || !user || booking.userId != user->id) continue;
+        if (booking.checkedInAt.isValid() && !booking.checkedOutAt.isValid() && !booking.cancelled) {
+            if (message) *message = QStringLiteral("Already checked in.");
+            return true;
+        }
+        if (!canCheckIn(booking, now)) {
+            if (message) *message = QStringLiteral("Check in during your booked hour only (China Standard Time).");
+            return false;
+        }
+        const Booking before = booking;
+        booking.checkedInAt = now.toUTC();
+        if (!save(message)) { booking = before; return false; }
+        if (message) *message = QStringLiteral("Check-in recorded.");
+        return true;
+    }
+    if (message) *message = QStringLiteral("Select a reservation belonging to your account.");
+    return false;
+}
+
+bool LabRepository::checkOut(const QString &bookingId, QString *message, const QDateTime &now)
+{
+    const User *user = currentUser();
+    for (Booking &booking : m_bookings) {
+        if (booking.id != bookingId || !user || booking.userId != user->id || booking.cancelled) continue;
+        if (booking.checkedOutAt.isValid()) {
+            if (message) *message = QStringLiteral("Already checked out.");
+            return true;
+        }
+        if (!canCheckOut(booking) || now < booking.checkedInAt) {
+            if (message) *message = QStringLiteral("Check in before checking out.");
+            return false;
+        }
+        const Booking before = booking;
+        booking.checkedOutAt = now.toUTC();
+        if (!save(message)) { booking = before; return false; }
+        if (message) *message = QStringLiteral("Check-out recorded.");
+        return true;
+    }
+    if (message) *message = QStringLiteral("Select a reservation belonging to your account.");
     return false;
 }
 
@@ -291,8 +339,8 @@ int LabRepository::bookedHoursForUser(const QString &userId) const
 {
     int completedHours = 0;
     for (const Booking &booking : bookingsForUser(userId)) {
-        const bool completed = booking.date < QDate::currentDate()
-            || (booking.date == QDate::currentDate() && QTime::currentTime() >= QTime(booking.startHour + 1, 0));
+        const bool completed = booking.date < labNow().date()
+            || (booking.date == labNow().date() && labNow().time() >= QTime(booking.startHour + 1, 0));
         if (completed) ++completedHours;
     }
     return completedHours;
@@ -300,18 +348,18 @@ int LabRepository::bookedHoursForUser(const QString &userId) const
 
 int LabRepository::currentLabUsers() const
 {
-    const int currentHour = QTime::currentTime().hour();
-    const QDate currentDate = QDate::currentDate();
+    const int currentHour = labNow().time().hour();
+    const QDate currentDate = labNow().date();
     int count = 0;
     for (const Booking &booking : m_bookings) {
-        if (isActive(booking) && booking.date == currentDate && booking.startHour == currentHour) ++count;
+        if (isActive(booking) && canCheckOut(booking) && booking.date == currentDate && booking.startHour == currentHour) ++count;
     }
     return count;
 }
 
 int LabRepository::currentWeekReservations() const
 {
-    const QDate today = QDate::currentDate();
+    const QDate today = labNow().date();
     const QDate monday = today.addDays(1 - today.dayOfWeek());
     const QDate sunday = monday.addDays(6);
     int total = 0;
@@ -388,7 +436,7 @@ bool LabRepository::save(QString *message) const
     QJsonArray deviceArray;
     for (const Device &device : m_devices) deviceArray.append(QJsonObject{{"number", device.number}, {"faulty", device.faulty}});
     QJsonArray bookingArray;
-    for (const Booking &booking : m_bookings) bookingArray.append(QJsonObject{{"id", booking.id}, {"deviceNumber", booking.deviceNumber}, {"date", booking.date.toString(Qt::ISODate)}, {"startHour", booking.startHour}, {"userId", booking.userId}, {"cancelled", booking.cancelled}});
+    for (const Booking &booking : m_bookings) bookingArray.append(QJsonObject{{"id", booking.id}, {"deviceNumber", booking.deviceNumber}, {"date", booking.date.toString(Qt::ISODate)}, {"startHour", booking.startHour}, {"userId", booking.userId}, {"cancelled", booking.cancelled}, {"checkedInAt", booking.checkedInAt.toUTC().toString(Qt::ISODateWithMs)}, {"checkedOutAt", booking.checkedOutAt.toUTC().toString(Qt::ISODateWithMs)}});
     QJsonArray issueArray;
     for (const IssueReport &issue : m_issues) issueArray.append(QJsonObject{{"id", issue.id}, {"deviceNumber", issue.deviceNumber}, {"reporterId", issue.reporterId}, {"description", issue.description}, {"resolved", issue.resolved}});
 

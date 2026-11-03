@@ -11,6 +11,7 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets)
 
 qt_add_executable(IntelligentLabReservationQt
+    resources.qrc
     src/main.cpp
     src/domain/Types.h
     src/services/LabRepository.h
