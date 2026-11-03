@@ -83,7 +83,7 @@ void LabRepository::load()
     // A local administrator is seeded only when an operator supplies its password at launch.
     const QString demoAdminPassword = qEnvironmentVariable("LAB_DEMO_ADMIN_PASSWORD");
     if (m_users.isEmpty() && !demoAdminPassword.isEmpty()) {
-        m_users.append({newId(), QStringLiteral("Lab Administrator"), QStringLiteral("admin"),
+        m_users.append({newId(), QStringLiteral("实验室管理员"), QStringLiteral("admin"),
                         demoAdminPassword, UserRole::Administrator});
         save(nullptr);
     }
@@ -115,12 +115,12 @@ bool LabRepository::registerStudent(const QString &name, const QString &loginId,
     const QString trimmedName = name.trimmed();
     const QString trimmedId = loginId.trimmed();
     if (trimmedName.isEmpty() || trimmedId.isEmpty() || password.size() < 4) {
-        if (message) *message = QStringLiteral("Enter a name, a student ID, and a password with at least four characters.");
+        if (message) *message = QStringLiteral("请输入姓名、学号和至少 4 位的密码。");
         return false;
     }
     for (const User &candidate : m_users) {
         if (candidate.loginId.compare(trimmedId, Qt::CaseInsensitive) == 0) {
-            if (message) *message = QStringLiteral("This student ID is already registered.");
+            if (message) *message = QStringLiteral("该学号已注册。");
             return false;
         }
     }
@@ -128,7 +128,7 @@ bool LabRepository::registerStudent(const QString &name, const QString &loginId,
     m_users.append(student);
     m_sessionUserId = student.id;
     if (!save(message)) return false;
-    if (message) *message = QStringLiteral("Student account created.");
+    if (message) *message = QStringLiteral("学生账号已创建。");
     return true;
 }
 
@@ -137,11 +137,11 @@ bool LabRepository::login(const QString &loginId, const QString &password, QStri
     for (const User &candidate : m_users) {
         if (candidate.loginId == loginId.trimmed() && candidate.password == password) {
             m_sessionUserId = candidate.id;
-            if (message) *message = QStringLiteral("Signed in.");
+            if (message) *message = QStringLiteral("登录成功。");
             return true;
         }
     }
-    if (message) *message = QStringLiteral("Incorrect ID or password.");
+    if (message) *message = QStringLiteral("账号或密码不正确。");
     return false;
 }
 
@@ -166,18 +166,18 @@ bool LabRepository::reserve(const QList<int> &deviceNumbers, const QDate &date, 
 {
     const User *sessionUser = currentUser();
     if (!sessionUser || sessionUser->role != UserRole::Student) {
-        if (message) *message = QStringLiteral("Only a signed-in student can make a reservation.");
+        if (message) *message = QStringLiteral("请使用学生账号登录后预约。");
         return false;
     }
     const QTime now = labNow().time();
     const bool startedToday = date == labNow().date() && startHour <= now.hour();
     if (deviceNumbers.isEmpty() || date < labNow().date() || startedToday || startHour < 8 || startHour > 16) {
-        if (message) *message = QStringLiteral("Choose a future date, one hourly slot, and at least one available device.");
+        if (message) *message = QStringLiteral("请选择尚未开始的日期和时段，并至少选择一台空闲设备。");
         return false;
     }
     for (const int deviceNumber : deviceNumbers) {
         if (isUnavailable(deviceNumber, date, startHour)) {
-            if (message) *message = QStringLiteral("A selected device is faulty or has just been reserved.");
+            if (message) *message = QStringLiteral("所选设备存在故障或已被预约，请重新选择。");
             return false;
         }
     }
@@ -185,7 +185,7 @@ bool LabRepository::reserve(const QList<int> &deviceNumbers, const QDate &date, 
         m_bookings.append({newId(), deviceNumber, date, startHour, sessionUser->id, false});
     }
     if (!save(message)) return false;
-    if (message) *message = QStringLiteral("Reservation confirmed.");
+    if (message) *message = QStringLiteral("预约成功，可在“我的”中查看和签到。");
     return true;
 }
 
@@ -196,11 +196,11 @@ bool LabRepository::cancel(const QString &bookingId, QString *message)
         if (booking.id == bookingId && sessionUser && booking.userId == sessionUser->id && isActive(booking) && !booking.checkedInAt.isValid() && QDateTime::currentDateTime() < bookingStart(booking)) {
             booking.cancelled = true;
             if (!save(message)) { booking.cancelled = false; return false; }
-            if (message) *message = QStringLiteral("Reservation cancelled and the device is available again.");
+            if (message) *message = QStringLiteral("预约已取消，设备时段已释放。");
             return true;
         }
     }
-    if (message) *message = QStringLiteral("Only your future reservation that has not been checked in can be cancelled.");
+    if (message) *message = QStringLiteral("只能取消本人尚未开始且未签到的预约。");
     return false;
 }
 
@@ -210,20 +210,20 @@ bool LabRepository::checkIn(const QString &bookingId, QString *message, const QD
     for (Booking &booking : m_bookings) {
         if (booking.id != bookingId || !user || booking.userId != user->id) continue;
         if (booking.checkedInAt.isValid() && !booking.checkedOutAt.isValid() && !booking.cancelled) {
-            if (message) *message = QStringLiteral("Already checked in.");
+            if (message) *message = QStringLiteral("该预约已签到。");
             return true;
         }
         if (!canCheckIn(booking, now)) {
-            if (message) *message = QStringLiteral("Check in during your booked hour only (China Standard Time).");
+            if (message) *message = QStringLiteral("请在预约时段内签到（北京时间）。");
             return false;
         }
         const Booking before = booking;
         booking.checkedInAt = now.toUTC();
         if (!save(message)) { booking = before; return false; }
-        if (message) *message = QStringLiteral("Check-in recorded.");
+        if (message) *message = QStringLiteral("签到成功。");
         return true;
     }
-    if (message) *message = QStringLiteral("Select a reservation belonging to your account.");
+    if (message) *message = QStringLiteral("请选择属于你的预约。");
     return false;
 }
 
@@ -233,20 +233,20 @@ bool LabRepository::checkOut(const QString &bookingId, QString *message, const Q
     for (Booking &booking : m_bookings) {
         if (booking.id != bookingId || !user || booking.userId != user->id || booking.cancelled) continue;
         if (booking.checkedOutAt.isValid()) {
-            if (message) *message = QStringLiteral("Already checked out.");
+            if (message) *message = QStringLiteral("该预约已签退。");
             return true;
         }
         if (!canCheckOut(booking) || now < booking.checkedInAt) {
-            if (message) *message = QStringLiteral("Check in before checking out.");
+            if (message) *message = QStringLiteral("请先签到，再进行签退。");
             return false;
         }
         const Booking before = booking;
         booking.checkedOutAt = now.toUTC();
         if (!save(message)) { booking = before; return false; }
-        if (message) *message = QStringLiteral("Check-out recorded.");
+        if (message) *message = QStringLiteral("签退成功，实际使用记录已保存。");
         return true;
     }
-    if (message) *message = QStringLiteral("Select a reservation belonging to your account.");
+    if (message) *message = QStringLiteral("请选择属于你的预约。");
     return false;
 }
 
@@ -261,24 +261,24 @@ Device *LabRepository::deviceByNumber(const int deviceNumber)
 bool LabRepository::setFault(const int deviceNumber, const bool faulty, QString *message)
 {
     if (!isAdministrator()) {
-        if (message) *message = QStringLiteral("Administrator access is required.");
+        if (message) *message = QStringLiteral("此操作需要管理员权限。");
         return false;
     }
     Device *device = deviceByNumber(deviceNumber);
     if (!device) {
-        if (message) *message = QStringLiteral("Unknown device number.");
+        if (message) *message = QStringLiteral("设备编号不存在。");
         return false;
     }
     device->faulty = faulty;
     if (!save(message)) return false;
-    if (message) *message = faulty ? QStringLiteral("Device marked as faulty.") : QStringLiteral("Device restored.");
+    if (message) *message = faulty ? QStringLiteral("设备已标记为故障。") : QStringLiteral("设备已恢复可用。");
     return true;
 }
 
 bool LabRepository::deactivateStudent(const QString &userId, QString *message)
 {
     if (!isAdministrator()) {
-        if (message) *message = QStringLiteral("Administrator access is required.");
+        if (message) *message = QStringLiteral("此操作需要管理员权限。");
         return false;
     }
     for (qsizetype index = 0; index < m_users.size(); ++index) {
@@ -288,11 +288,11 @@ bool LabRepository::deactivateStudent(const QString &userId, QString *message)
                 if (m_bookings.at(bookingIndex).userId == userId) m_bookings.removeAt(bookingIndex);
             }
             if (!save(message)) return false;
-            if (message) *message = QStringLiteral("Student account deactivated.");
+            if (message) *message = QStringLiteral("学生账号已注销。");
             return true;
         }
     }
-    if (message) *message = QStringLiteral("Select an existing student account.");
+    if (message) *message = QStringLiteral("请选择有效的学生账号。");
     return false;
 }
 
@@ -300,19 +300,19 @@ bool LabRepository::reportIssue(const int deviceNumber, const QString &descripti
 {
     const User *sessionUser = currentUser();
     if (!sessionUser || description.trimmed().isEmpty()) {
-        if (message) *message = QStringLiteral("Describe the issue before submitting it.");
+        if (message) *message = QStringLiteral("请填写故障现象后提交。");
         return false;
     }
     m_issues.append({newId(), deviceNumber, sessionUser->id, description.trimmed(), false});
     if (!save(message)) return false;
-    if (message) *message = QStringLiteral("Issue report saved for the administrator.");
+    if (message) *message = QStringLiteral("故障已上报，可在故障记录中查看处理进度。");
     return true;
 }
 
 bool LabRepository::resolveIssue(const QString &issueId, QString *message)
 {
     if (!isAdministrator()) {
-        if (message) *message = QStringLiteral("Administrator access is required.");
+        if (message) *message = QStringLiteral("此操作需要管理员权限。");
         return false;
     }
     for (IssueReport &issue : m_issues) {
@@ -320,11 +320,11 @@ bool LabRepository::resolveIssue(const QString &issueId, QString *message)
             issue.resolved = true;
             if (Device *device = deviceByNumber(issue.deviceNumber)) device->faulty = false;
             if (!save(message)) return false;
-            if (message) *message = QStringLiteral("Issue resolved and device restored.");
+            if (message) *message = QStringLiteral("故障已处理，设备已恢复可用。");
             return true;
         }
     }
-    if (message) *message = QStringLiteral("Select an open issue report.");
+    if (message) *message = QStringLiteral("请选择一条待处理的故障记录。");
     return false;
 }
 
@@ -373,7 +373,7 @@ bool LabRepository::exportCountFile(const QString &path, const QDate &date, QStr
 {
     QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if (message) *message = QStringLiteral("The daily usage file could not be opened.");
+        if (message) *message = QStringLiteral("无法打开使用统计文件。");
         return false;
     }
     QString report = QStringLiteral("Intelligent Lab Reservation System - Daily Usage\nDate: %1\n\n").arg(date.toString(Qt::ISODate));
@@ -384,10 +384,10 @@ bool LabRepository::exportCountFile(const QString &path, const QDate &date, QStr
     }
     output.write(report.toUtf8());
     if (!output.commit()) {
-        if (message) *message = QStringLiteral("The daily usage file could not be saved.");
+        if (message) *message = QStringLiteral("无法保存使用统计文件。");
         return false;
     }
-    if (message) *message = QStringLiteral("count.txt exported.");
+    if (message) *message = QStringLiteral("count.txt 已导出。");
     return true;
 }
 
@@ -395,7 +395,7 @@ bool LabRepository::exportErrorFile(const QString &path, QString *message) const
 {
     QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if (message) *message = QStringLiteral("The issue report file could not be opened.");
+        if (message) *message = QStringLiteral("无法打开故障报告文件。");
         return false;
     }
     QString report = QStringLiteral("Intelligent Lab Reservation System - Device Issues\n\n");
@@ -407,10 +407,10 @@ bool LabRepository::exportErrorFile(const QString &path, QString *message) const
     }
     output.write(report.toUtf8());
     if (!output.commit()) {
-        if (message) *message = QStringLiteral("The issue report file could not be saved.");
+        if (message) *message = QStringLiteral("无法保存故障报告文件。");
         return false;
     }
-    if (message) *message = QStringLiteral("error.txt exported.");
+    if (message) *message = QStringLiteral("error.txt 已导出。");
     return true;
 }
 
@@ -427,7 +427,7 @@ bool LabRepository::save(QString *message) const
     QLockFile lock(path + QStringLiteral(".lock"));
     lock.setStaleLockTime(3000);
     if (!lock.tryLock(500)) {
-        if (message) *message = QStringLiteral("The local data is being updated. Please try again.");
+        if (message) *message = QStringLiteral("本地数据正在更新，请稍后重试。");
         return false;
     }
 
@@ -442,7 +442,7 @@ bool LabRepository::save(QString *message) const
 
     QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly) || output.write(QJsonDocument(QJsonObject{{"users", userArray}, {"devices", deviceArray}, {"bookings", bookingArray}, {"issues", issueArray}}).toJson()) < 0 || !output.commit()) {
-        if (message) *message = QStringLiteral("The local demo data could not be saved.");
+        if (message) *message = QStringLiteral("无法保存本地演示数据。");
         return false;
     }
     return true;
