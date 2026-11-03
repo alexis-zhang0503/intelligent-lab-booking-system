@@ -558,3 +558,11 @@ body.booking-success-ready .booking-check path { animation: confirmation-stroke 
   .time-range > i { display: none; }
   .time-range select { min-width: 0; width: 100%; }
 }
+
+/* Administrator modules share the device page and keep anchor targets visible. */
+.device-modules { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
+.admin-module { scroll-margin-top: 6rem; min-width: 0; }
+.admin-module-links { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.25rem; }
+
+.admin-overview-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media(max-width:700px) { .admin-overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
