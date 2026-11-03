@@ -346,11 +346,11 @@ nav::-webkit-scrollbar { display: none; }
 body[data-role="admin"] .admin-only { display: block; }
 #auth .auth-link { display: block; margin: .85rem auto 0; color: var(--blue); font-size: .78rem; }
 #inviteResult { margin-top: 1rem; }
-body[data-role="admin"] .table tbody td:first-child, body[data-role="admin"] .table tbody td:nth-child(3) { cursor: text; text-decoration: underline dotted transparent; text-underline-offset: .25rem; transition: color .18s ease, text-decoration-color .18s ease; }
-body[data-role="admin"] .table tbody td:first-child:hover, body[data-role="admin"] .table tbody td:nth-child(3):hover { color: var(--blue); text-decoration-color: currentColor; }
-body[data-role="admin"] .table tbody td:first-child::after, body[data-role="admin"] .table tbody td:nth-child(3)::after { margin-left: .42rem; content: "✎"; color: var(--blue); font-size: .72rem; opacity: 0; transition: opacity .18s ease; }
-body[data-role="admin"] .table tbody td:first-child:hover::after, body[data-role="admin"] .table tbody td:nth-child(3):hover::after { opacity: 1; }
-body[data-role="admin"] .table tbody td:first-child input, body[data-role="admin"] .table tbody td:nth-child(3) input { min-width: 8.5rem; margin: -.45rem 0; padding: .4rem .5rem; font: inherit; }
+body[data-role="admin"] .profile-identity-table tbody td:first-child, body[data-role="admin"] .profile-identity-table tbody td:nth-child(3) { cursor: text; text-decoration: underline dotted transparent; text-underline-offset: .25rem; transition: color .18s ease, text-decoration-color .18s ease; }
+body[data-role="admin"] .profile-identity-table tbody td:first-child:hover, body[data-role="admin"] .profile-identity-table tbody td:nth-child(3):hover { color: var(--blue); text-decoration-color: currentColor; }
+body[data-role="admin"] .profile-identity-table tbody td:first-child::after, body[data-role="admin"] .profile-identity-table tbody td:nth-child(3)::after { margin-left: .42rem; content: "✎"; color: var(--blue); font-size: .72rem; opacity: 0; transition: opacity .18s ease; }
+body[data-role="admin"] .profile-identity-table tbody td:first-child:hover::after, body[data-role="admin"] .profile-identity-table tbody td:nth-child(3):hover::after { opacity: 1; }
+body[data-role="admin"] .profile-identity-table tbody td:first-child input, body[data-role="admin"] .profile-identity-table tbody td:nth-child(3) input { min-width: 8.5rem; margin: -.45rem 0; padding: .4rem .5rem; font: inherit; }
 
 .desk:active:not(:disabled) { transform: none; }
 .desk.selected { transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease; }
