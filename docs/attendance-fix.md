@@ -1,6 +1,6 @@
 # 签到修复与上传说明
 
-本次基于 main 的 bdc84cebd3f2938f007df58f92722a4dcbce9dc8 修改。未推送 GitHub，也未更改线上 Supabase 数据库。
+本次已合并 main 的 ddff75f4e0dd2e29c15fb4df11034f7c3be58b1d，保留最新管理、故障维护和入场动画改动。未推送 GitHub，也未更改线上 Supabase 数据库。
 
 ## 问题与修复
 
@@ -45,10 +45,18 @@ Windows 发行版还需用对应 Qt 安装中的 windeployqt 部署依赖。本�
 
 ## 验证结果
 
-- 网页 7 项 Node 回归测试通过；另在 America/New_York 时区运行，7 项同样通过。
+- 合并后的网页 37 项 Node 回归测试通过；签到模块的 7 项另在 America/New_York 时区运行通过。
 - 主脚本 ES 模块语法检查和 git diff --check 通过。
 - 使用 PGlite（PostgreSQL 兼容引擎）执行测试专用空数据库结构、实际增量 SQL 和数据库测试脚本，通过。覆盖过早/过期签到、未签到签退、其他账号/匿名操作、UTC 会话中的北京时间签到、重复签到/签退及事件去重。
 - Qt 回归测试已增加时间边界、持久化和账号归属检查；当前环境缺少 Qt/CMake，未执行桌面端编译和测试。新增 GitHub Actions 包含 Qt 构建、CTest 及独立 PostgreSQL 16 服务测试，上传后应确认全部通过。
 - 未使用真实用户账号进行端到端签到，也未部署此版本。
 
 测试：`node --test tests/attendance.test.mjs`。`tests/attendance-fixture.sql` 仅供空的测试数据库，不要在生产数据库运行。
+
+本次发布尝试：GitHub 写入接口返回 HTTP 403（Resource not accessible by integration），未产生远程提交或部署。
+
+## 本次品牌标识更新
+
+使用用户提供的米色底、棕色 NJ 字母原图替换登录页、侧栏、进入动画、浏览器图标及 Qt 登录页和窗口图标。原图颜色和内容未改动。Qt 图标需重新构建才能生效；网页和图标引用增加版本标记以刷新缓存。
+
+发布补充：网页和 Qt 共用 favicon.svg 中内嵌的原始 PNG Logo；Qt 直接解码内嵌 PNG，不依赖额外 SVG 插件。

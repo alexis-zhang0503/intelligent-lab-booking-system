@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 
 #include <QApplication>
+#include "ui/BrandLogo.h"
 
 /**
  * @brief Starts the native Windows Qt application.
@@ -13,6 +14,8 @@ int main(int argc, char *argv[])
     QApplication application(argc, argv);
     QApplication::setApplicationName(QStringLiteral("IntelligentLabReservationQt"));
     QApplication::setOrganizationName(QStringLiteral("NJUPT"));
+
+    application.setWindowIcon(labBrandIcon());
 
     MainWindow window;
     window.show();

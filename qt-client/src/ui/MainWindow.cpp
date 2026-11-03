@@ -10,6 +10,7 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include "ui/BrandLogo.h"
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -65,6 +66,10 @@ void MainWindow::showAuthenticationPage()
     auto *description = new QLabel(QStringLiteral("A C++ desktop companion for hourly lab reservations, device maintenance, and course-required exports."));
     description->setWordWrap(true);
     description->setStyleSheet(QStringLiteral("color:#6e6e73; font-size:16px; line-height:1.5;"));
+    auto *brandLogo = new QLabel;
+    brandLogo->setPixmap(labBrandIcon().pixmap(64, 64));
+    brandLogo->setAccessibleName(QStringLiteral("NJUPT Lab Reservation logo"));
+    copy->addWidget(brandLogo);
     copy->addWidget(eyebrow);
     copy->addSpacing(16);
     copy->addWidget(title);
