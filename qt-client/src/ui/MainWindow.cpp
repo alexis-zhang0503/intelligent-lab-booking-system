@@ -211,8 +211,8 @@ void MainWindow::showDashboard()
         layout->addWidget(issueGroup, 1);
     } else {
         auto *tools = new QHBoxLayout;
-        m_dateInput = new QDateEdit(QDate::currentDate());
-        m_dateInput->setMinimumDate(QDate::currentDate());
+        m_dateInput = new QDateEdit(labNow().date());
+        m_dateInput->setMinimumDate(labNow().date());
         m_dateInput->setCalendarPopup(true);
         m_hourInput = new QComboBox;
         for (int hour = 8; hour <= 16; ++hour) m_hourInput->addItem(hourlyLabel(hour), hour);
@@ -239,10 +239,17 @@ void MainWindow::showDashboard()
         auto *bookingLayout = new QVBoxLayout(bookingGroup);
         bookingLayout->addWidget(m_bookingList);
         bookingLayout->addWidget(cancelButton);
+        m_checkInButton = actionButton(QStringLiteral("Check in (CST)"));
+        m_checkOutButton = actionButton(QStringLiteral("Check out"));
+        connect(m_checkInButton, &QPushButton::clicked, this, &MainWindow::checkInSelectedBooking);
+        connect(m_checkOutButton, &QPushButton::clicked, this, &MainWindow::checkOutSelectedBooking);
+        connect(m_bookingList, &QListWidget::itemSelectionChanged, this, &MainWindow::updateAttendanceButtons);
+        bookingLayout->addWidget(m_checkInButton);
+        bookingLayout->addWidget(m_checkOutButton);
         layout->addWidget(bookingGroup, 1);
         refreshBookingList();
         auto *statusTimer = new QTimer(page);
-        connect(statusTimer, &QTimer::timeout, this, [this] { refreshStudentSeats(); refreshBookingList(); });
+        connect(statusTimer, &QTimer::timeout, this, [this, page] { if (m_pages->currentWidget() == page) { refreshStudentSeats(); refreshBookingList(); } });
         statusTimer->start(30000);
     }
 
@@ -317,12 +324,50 @@ void MainWindow::reserveSelectedSeats()
 void MainWindow::refreshBookingList()
 {
     if (!m_bookingList || !m_repository.currentUser()) return;
+    const QString selectedId = m_bookingList->currentItem() ? m_bookingList->currentItem()->data(Qt::UserRole).toString() : QString();
     m_bookingList->clear();
     for (const Booking &booking : m_repository.bookingsForUser(m_repository.currentUser()->id)) {
         auto *item = new QListWidgetItem(QStringLiteral("Device %1 · %2 · %3").arg(booking.deviceNumber, 2, 10, QLatin1Char('0')).arg(booking.date.toString(Qt::ISODate), hourlyLabel(booking.startHour)));
         item->setData(Qt::UserRole, booking.id);
+        const QString state = booking.checkedOutAt.isValid() ? QStringLiteral("Completed")
+            : booking.checkedInAt.isValid() ? QStringLiteral("In use") : QStringLiteral("Confirmed");
+        item->setText(item->text() + QStringLiteral(" · ") + state + QStringLiteral(" (CST)"));
         m_bookingList->addItem(item);
+        if (booking.id == selectedId) m_bookingList->setCurrentItem(item);
     }
+    updateAttendanceButtons();
+}
+
+void MainWindow::updateAttendanceButtons()
+{
+    if (!m_checkInButton || !m_checkOutButton || !m_bookingList) return;
+    m_checkInButton->setEnabled(false);
+    m_checkOutButton->setEnabled(false);
+    if (!m_bookingList->currentItem()) return;
+    const QString id = m_bookingList->currentItem()->data(Qt::UserRole).toString();
+    for (const Booking &booking : m_repository.bookings()) {
+        if (booking.id != id) continue;
+        m_checkInButton->setEnabled(canCheckIn(booking));
+        m_checkOutButton->setEnabled(canCheckOut(booking));
+    }
+}
+
+void MainWindow::checkInSelectedBooking()
+{
+    if (!m_bookingList || !m_bookingList->currentItem()) return;
+    QString message;
+    const bool ok = m_repository.checkIn(m_bookingList->currentItem()->data(Qt::UserRole).toString(), &message);
+    refreshBookingList();
+    showMessage(message, !ok);
+}
+
+void MainWindow::checkOutSelectedBooking()
+{
+    if (!m_bookingList || !m_bookingList->currentItem()) return;
+    QString message;
+    const bool ok = m_repository.checkOut(m_bookingList->currentItem()->data(Qt::UserRole).toString(), &message);
+    refreshBookingList();
+    showMessage(message, !ok);
 }
 
 void MainWindow::cancelSelectedBooking()
@@ -365,7 +410,7 @@ void MainWindow::exportCountFile()
     const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Export daily usage"), QStringLiteral("count.txt"), QStringLiteral("Text files (*.txt)"));
     if (path.isEmpty()) return;
     QString message;
-    if (m_repository.exportCountFile(path, QDate::currentDate(), &message)) showMessage(message); else showMessage(message, true);
+    if (m_repository.exportCountFile(path, labNow().date(), &message)) showMessage(message); else showMessage(message, true);
 }
 
 void MainWindow::exportErrorFile()

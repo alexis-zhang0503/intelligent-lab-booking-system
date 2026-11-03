@@ -38,3 +38,7 @@ Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`
 ## GitHub Pages
 
 推送 main 分支后，GitHub Actions 会部署页面。首次部署后在仓库 Settings → Pages 查看公开链接。
+
+## 签到修复
+
+网页签到时间、异常提示和 Qt 本地签到实现已更新，部署所需的数据库步骤及验证范围见 [签到修复与上传说明](docs/attendance-fix.md)。只推送前端文件不会更新 Supabase 函数，必须按说明执行增量迁移。

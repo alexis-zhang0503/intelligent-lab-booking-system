@@ -1,3 +1,4 @@
+import { attendanceState, attendanceError, reservationStart } from "./web/core/attendanceRules.js";
 import { registrationError, authErrorMessage } from "./web/core/authRules.js";
 import { DEVICE_NUMBERS as DESKS, HOURLY_SLOTS as SLOTS, hourToMinutes, hourlyRange } from "./web/core/hourlyRules.js";
 import { supabase } from "./web/core/supabaseClient.js";
@@ -58,7 +59,7 @@ function translateNode(node){let raw=node.nodeValue,trim=raw.trim();if(!trim)ret
 function syncLanguage(){document.documentElement.lang=language==="en"?"en":"zh-CN";document.title=tr("智能实验室预约系统");let walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);for(let node;node=walker.nextNode();)if(!node.parentElement?.closest("script,style"))translateNode(node);qa("[placeholder],[aria-label]").forEach(el=>{for(let name of ["placeholder","aria-label"]){let value=el.getAttribute(name);if(value)el.setAttribute(name,tr(value))}});qa("[data-language]").forEach(button=>button.classList.toggle("active",button.dataset.language===language))}
 function setLanguage(next){language=next;localStorage.setItem(LANGKEY,language);render()}
 /** Returns the exact local end instant for a one-hour reservation. */
-function bookingEnd(booking){let start=slotStart(booking.hour);return new Date(`${booking.date}T00:00:00`).getTime()+(start+60)*60000}
+function bookingEnd(booking){return reservationStart(booking)+3600000}
 /** Reservation states are authoritative in Supabase; the browser never auto-completes them. */
 function refreshBookingStates(){return false}
 function scheduleStatusRefresh(){clearTimeout(scheduleStatusRefresh.timer);let now=Date.now(),next=Math.min(...db.bookings.filter(booking=>booking.status!=="completed"&&bookingEnd(booking)>now).map(booking=>bookingEnd(booking)));if(Number.isFinite(next))scheduleStatusRefresh.timer=setTimeout(()=>{let changed=refreshBookingStates();if(changed&&user())render();else scheduleStatusRefresh()},Math.max(250,next-Date.now()+80))}
@@ -150,7 +151,12 @@ async function forceCancelStudentReservation(reservationId,button){
   }catch(error){toast(cloudError(error),"error")}finally{if(button)button.disabled=false}
 }
 function favorite(a,key,label){let counts={};a.forEach(x=>counts[x[key]]=(counts[x[key]]||0)+1);let top=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];return top?label(top[0],top[1]):tr("暂未形成")}
-function usageControls(booking){if(booking.status==="in_use")return `<button class="secondary small-btn" data-check-out="${booking.id}">手动签退</button>`;if(["reserved","confirmed"].includes(booking.status)&&booking.date===today())return `<button class="secondary small-btn" data-check-in="${booking.id}">手动签到</button>`;return ""}
+function usageControls(booking){
+  const state=attendanceState(booking),pending=attendancePending.has(booking.id);
+  if(state==="check_out")return `<button class="secondary small-btn" data-check-out="${booking.id}" ${pending?"disabled":""}>${tr("手动签退")}</button>`;
+  if(state==="check_in")return `<button class="secondary small-btn" data-check-in="${booking.id}" ${pending?"disabled":""}>${tr("手动签到")}</button>`;
+  return state==="early"?`<span class="tag">${language==="en"?"Not started (CST)":"尚未开始（北京时间）"}</span>`:state==="expired"?`<span class="tag">${language==="en"?"Check-in closed":"签到已结束"}</span>`:"";
+}
 function myUsageRecords(bookings){return bookings.length?`<div class="records">${bookings.map(booking=>`<div class="record"><div><b>#${String(booking.deskNo).padStart(2,"0")} · ${fh(booking.hour)}</b><small>${fd(booking.date)} · ${reservationStatus(booking.status)}</small></div><div>${usageControls(booking)}</div></div>`).join("")}</div>`:`<p class="empty">暂无记录。</p>`}
 function me(){head("MY PROFILE","我的");let mine=db.bookings.filter(x=>x.userId===user().id),todayMine=mine.filter(x=>x.date===today()).sort((a,b)=>a.hour-b.hour),future=mine.filter(x=>x.date>=today()).sort((a,b)=>(a.date+a.hour).localeCompare(b.date+b.hour)),favoriteDesk=favorite(mine,"deskNo",(n,c)=>"#"+String(n).padStart(2,"0")+" · "+timesLabel(c)),favoriteHour=favorite(mine,"hour",(slot,c)=>fh(slot).split("–")[0]+" · "+timesLabel(c));q("#content").innerHTML=`<section class="profile-hero"><div class="profile-mark">${esc(user().name[0])}</div><div><h2>${esc(user().name)}</h2><p>${tr(admin()?"管理员":"学生")} · ${esc(user().loginId)}</p></div></section><section class="today-spotlight"><div><p class="eyebrow">${fd(today())}</p><h2>${todayMine.length?"今天的预约":"今天还没有预约"}</h2><p>${todayMine.length?todayMine.map(x=>"#"+String(x.deskNo).padStart(2,"0")+" · "+fh(x.hour)).join("　"):"选好设备和起止时间后，会显示在这里。"}</p></div><div class="today-number"><b>${todayMine.length}</b><span>${slotsLabel(todayMine.length)}</span></div>${todayMine.length?"":`<button data-go="dashboard" class="secondary small-btn">去预约</button>`}</section><div class="profile-grid"><section class="panel preference-panel"><h2>预约偏好</h2><p class="sub">根据你的实际预约自动汇总</p><div class="preference-list"><div><span>常用设备</span><b>${favoriteDesk}</b></div><div><span>常用时段</span><b>${favoriteHour}</b></div><div><span>未来预约</span><b>${slotsLabel(future.length)}</b></div></div></section><section class="panel my-bookings"><h2>手动签到与签退</h2><p class="sub">仅在预约时段内签到；签退会完成实际使用记录。</p>${myUsageRecords(mine.slice().sort((a,b)=>(a.date+a.hour).localeCompare(b.date+b.hour)))}</section><section class="panel my-bookings"><h2>我的预约</h2><p class="sub">取消后设备时段会立即释放。</p>${records(mine.slice().sort((a,b)=>(a.date+a.hour).localeCompare(b.date+b.hour)),true)}</section></div>`;go();bindUsageActions()}
 /** Renders administrator metrics using the actual current full-hour slot. */
@@ -346,8 +352,30 @@ async function cancelCloud(reservationId){
 
 function cancelBind(){qa("[data-cancel]").forEach(button=>button.onclick=()=>cancelCloud(button.dataset.cancel))}
 
-async function checkIn(reservationId){let {error}=await supabase.rpc("v2_check_in",{p_reservation_id:reservationId});if(error){toast(cloudError(error),"error");return}toast("签到成功。");await refreshCloud()}
-async function checkOut(reservationId){let {error}=await supabase.rpc("v2_check_out",{p_reservation_id:reservationId});if(error){toast(cloudError(error),"error");return}toast("签退成功。");await refreshCloud()}
+const attendancePending=new Set();
+async function saveAttendance(reservationId,action){
+  if(attendancePending.has(reservationId))return;
+  const booking=db.bookings.find(item=>item.id===reservationId);
+  if(!booking||attendanceState(booking)!==action){
+    toast(language==="en"?"Refresh your records and check the booked hour (CST).":"请检查预约时段（北京时间）及当前状态，刷新记录后再操作。","error");
+    return;
+  }
+  attendancePending.add(reservationId);
+  qa("[data-check-in],[data-check-out]").filter(button=>(button.dataset.checkIn||button.dataset.checkOut)===reservationId).forEach(button=>button.disabled=true);
+  try{
+    const {error}=await supabase.rpc(action==="check_in"?"v2_check_in":"v2_check_out",{p_reservation_id:reservationId});
+    if(error)throw error;
+    // The write has committed. A later refresh failure must not be reported as a failed check-in.
+    try{
+      const loaded=await refreshCloud();
+      if(loaded)toast(action==="check_in"?"签到成功。":"签退成功。");
+      else toast(language==="en"?"Attendance saved. Refresh to load the latest records.":"签到状态已保存，请刷新以加载最新记录。");
+    }catch(error){toast(language==="en"?"Attendance saved. Refresh to load the latest records.":"签到状态已保存，请刷新以加载最新记录。")}
+  }catch(error){console.warn("Attendance request failed",error);toast(attendanceError(error,language),"error")}
+  finally{attendancePending.delete(reservationId);if(user()&&page==="me")me()}
+}
+async function checkIn(reservationId){return saveAttendance(reservationId,"check_in")}
+async function checkOut(reservationId){return saveAttendance(reservationId,"check_out")}
 function bindUsageActions(){qa("[data-check-in]").forEach(button=>button.onclick=()=>checkIn(button.dataset.checkIn));qa("[data-check-out]").forEach(button=>button.onclick=()=>checkOut(button.dataset.checkOut))}
 
 function candidateMarkup(candidates){return candidates?.length?`<div class="records">${candidates.map(candidate=>`<div class="record"><div><b>${fh(candidate.start_hour)} · ${candidate.device_numbers.map(number=>"#"+String(number).padStart(2,"0")).join(" ")}</b><small>${tr("排名")} ${candidate.candidate_rank}</small></div><button class="secondary small-btn" data-use-candidate="${candidate.candidate_rank}">采用</button></div>`).join("")}</div>`:`<p class="empty">没有符合全部约束的候选方案。</p>`}
@@ -623,6 +651,7 @@ async function bootCloud(){
   q("#inviteForm").onsubmit=createAdministratorInvite;
   q("#copyInviteCode").onclick=copyInvitationCode;
   render();
+  setInterval(()=>{if(user()&&page==="me"&&!attendancePending.size)me()},15000);
   try{await refreshCloud();subscribeCloud()}catch(error){toast(cloudError(error),"error")}
 }
 

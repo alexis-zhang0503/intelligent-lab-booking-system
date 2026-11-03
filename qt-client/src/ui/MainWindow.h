@@ -13,6 +13,7 @@ class QListWidget;
 class QStackedWidget;
 class QTableWidget;
 class QToolButton;
+class QPushButton;
 
 /**
  * @brief Native Windows interface for the C++ version of the lab reservation system.
@@ -41,6 +42,8 @@ private slots:
     void reserveSelectedSeats();
     /** @brief Cancels the booking selected in the student's reservation list. */
     void cancelSelectedBooking();
+    void checkInSelectedBooking();
+    void checkOutSelectedBooking();
     /** @brief Opens a small prompt that records a fault report for the selected device. */
     void reportSelectedIssue();
     /** @brief Toggles one device fault state from the administrator's plan. */
@@ -77,6 +80,9 @@ private:
     QComboBox *m_hourInput = nullptr;          ///< Student-selected one-hour start time.
     QList<QToolButton *> m_deviceButtons;     ///< Forty buttons in physical-number order.
     QSet<int> m_selectedDevices;               ///< Student's current multiple-device selection.
+    QPushButton *m_checkInButton = nullptr;
+    QPushButton *m_checkOutButton = nullptr;
+    void updateAttendanceButtons();
     QListWidget *m_bookingList = nullptr;      ///< Student's active reservations for cancellation.
     QTableWidget *m_userTable = nullptr;       ///< Administrator account list with the selected student identifier.
     QTableWidget *m_issueTable = nullptr;      ///< Administrator issue list with the selected report identifier.

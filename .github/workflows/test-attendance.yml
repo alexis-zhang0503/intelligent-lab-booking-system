@@ -1,0 +1,33 @@
+name: Test attendance
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  attendance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/attendance.test.mjs
+      - run: sudo apt-get update && sudo apt-get install -y cmake qt6-base-dev
+      - run: cmake -S qt-client -B build -DBUILD_TESTING=ON && cmake --build build --parallel 2
+      - run: ctest --test-dir build --output-on-failure
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: attendance-test-only
+          POSTGRES_DB: attendance_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: attendance-test-only
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -h localhost -U postgres -d attendance_test -v ON_ERROR_STOP=1 -f tests/attendance-fixture.sql -f backend/supabase/v2-2-attendance-fix.sql -f tests/attendance-db.sql

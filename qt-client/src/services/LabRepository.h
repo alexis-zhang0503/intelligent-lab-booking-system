@@ -88,6 +88,11 @@ public:
      */
     bool cancel(const QString &bookingId, QString *message);
 
+    /** Records local attendance only during the booked hour; repeated requests are idempotent. */
+    bool checkIn(const QString &bookingId, QString *message, const QDateTime &now = QDateTime::currentDateTime());
+    /** Completes an owned checked-in booking and persists the checkout timestamp. */
+    bool checkOut(const QString &bookingId, QString *message, const QDateTime &now = QDateTime::currentDateTime());
+
     /**
      * @brief Changes one device between working and faulty states.
      * @param deviceNumber Physical device number.
