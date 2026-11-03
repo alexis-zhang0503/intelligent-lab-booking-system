@@ -1,0 +1,4 @@
+/* Follow-up visual corrections; loaded after the V3 presentation layer. */
+.auth-brand .auth-brand-logo{width:clamp(168px,17vw,228px);height:auto;margin:0}
+.intro h1{color:transparent;background:linear-gradient(105deg,#071b34 0%,#0066cc 31%,#7b61ff 54%,#00a6a6 76%,#071b34 100%);background-size:240% 100%;-webkit-background-clip:text;background-clip:text;animation:login-spectrum 12s linear infinite}
+.v3-curtain{z-index:1}.v3-stage{z-index:2}
