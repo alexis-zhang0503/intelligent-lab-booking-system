@@ -32,7 +32,11 @@ test('no selected device cannot accidentally report device 01',()=>{
 });
 test('assistant heading displays the generic name in Chinese and English',()=>{
   const {run}=setup();run(`globalThis.heading='';head=(kicker,title)=>heading=title;agentPage()`);
-  assert.equal(run('heading'),'智能助手');run(`language='en'`);assert.equal(run('tr(heading)'),'AI Assistant');
+  assert.equal(run('heading'),'预约助手');run(`language='en'`);assert.equal(run('tr(heading)'),'Booking assistant');
+});
+test('assistant turns a started slot into a clear instruction without raw database details',()=>{
+  const {run,node}=setup();run(`language='en';agentResponse={message:'A recommendation based on live database facts is ready',facts:{schedule:{failures:[{date:'2026-11-04',hour:8,reason:'slot_has_started'}],timezone:'Asia/Shanghai',contract:'internal'}},proposals:[]};agentPage()`);
+  assert.match(node('#content').innerHTML,/has already started/);assert.doesNotMatch(node('#content').innerHTML,/slot_has_started|timezone|internal/);
 });
 test('the dashboard report button calls the selection-aware handler',()=>{
   const {run}=setup();assert.match(run('dashStudent.toString()'),/q\("#report"\)\.onclick=reportSelectedDevice/);
