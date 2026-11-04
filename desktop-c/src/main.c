@@ -308,7 +308,7 @@ static void visibility(void) {
         ShowWindow(labels[i], logged ? SW_HIDE : SW_SHOW);
     ShowWindow(tabs,SW_HIDE);
     for(int i=0;i<5;i++)ShowWindow(navigation[i],logged&&((i!=2&&i!=3)||admin())?SW_SHOW:SW_HIDE);
-    ShowWindow(profileFault,logged&&(page==1||page==2)?SW_SHOW:SW_HIDE);
+    ShowWindow(profileFault,logged&&page==1?SW_SHOW:SW_HIDE);
     ShowWindow(usageList,logged&&page==1?SW_SHOW:SW_HIDE);
     ShowWindow(agentReply,logged&&page==4?SW_SHOW:SW_HIDE);
     ShowWindow(list, logged&&page!=4 ? SW_SHOW : SW_HIDE);
@@ -329,7 +329,7 @@ static void visibility(void) {
         if (id == ID_BOOK || id == ID_SUGGEST)
             show = logged && page == 0;
         if (id == ID_ATTEND || id == ID_CANCEL)
-            show = logged && (page == 1 || (page == 0 && admin()));
+            show = logged && page == 1;
         if (id == ID_REPORT)
             show = logged && (page == 2 || page == 0);
         if (id == ID_REPAIR || id == ID_ARCHIVE)
@@ -852,7 +852,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         for (int i = 0; i < 15; i++)
             actions[i] = control(L"BUTTON", actionNames[i], BS_OWNERDRAW|WS_TABSTOP, actionIds[i], 24, 600, 135, 30);
         statusText = control(L"STATIC", L"欢迎使用。所有预约时段按北京时间计算。", 0, 0, 24, 650, 1040, 24);
-        if(preview){ui_preview_model(&client,&model);logged=preview!=1;page=preview==3?1:preview==4?4:0;render();}
+        if(preview){SetWindowTextW(statusText,L"界面预览 · 示例数据 · 未连接真实账号");ui_preview_model(&client,&model);logged=preview!=1;page=preview==3?1:preview==4?4:0;render();}
         else SetTimer(h,1,30000,NULL);
         layout();
         Job *j = calloc(1, sizeof(*j));
