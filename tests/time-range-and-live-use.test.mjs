@@ -11,7 +11,7 @@ function setup(){
  const context=vm.createContext({console:{warn(){}},Date:Clock,Map,Set,Intl,Number,String,Math,JSON,crypto:{randomUUID:()=> 'key-'+(++context.uuid)},uuid:0,
  localStorage:{getItem:()=> 'zh'},document:{querySelector:node,querySelectorAll:()=>[],addEventListener(){},body:{dataset:{},classList:{contains:()=>false}}},window:{addEventListener(){}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,
  DESKS:Array.from({length:40},(_,i)=>i+1),SLOTS:[8,9,10,11,12,13,14,15,16],supabase:{},hourlyRange:h=>`${h}:00–${h+1}:00`,hourToMinutes:h=>h*60,attendanceState,attendanceError,reservationStart});
- vm.runInContext(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^playSiteEntry\(\);$/gm,'').replace(/\nbootCloud\(\);\s*$/,''),context);
+ vm.runInContext(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^playSiteEntry\(\);$/gm,'').replace(/\nbootCloud\(\);\s*$/,''),context);
  const run=code=>vm.runInContext(code,context);
  run(`db={users:[{id:'s',name:'Student',role:'student',loginId:'B001'}],session:'s',devices:[],faults:[],bookings:[]};date=today(1);page='dashboard';startHour=9;endHour=12;desks=new Set([23]);syncLanguage=()=>{};dashStudent=()=>{};toast=(text,type)=>{globalThis.notice={text,type}};refreshCloud=async()=>true;showBookingSuccess=minutes=>{globalThis.successMinutes=minutes};syncBookingRange()`);
  return {run,node};
