@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { bookingContext, resolveBookingPlanInput } from "./booking-request.mjs";
 
 type AgentType = "booking_planner" | "admin_analyst" | "fault_responder";
 type AgentRequest = {
@@ -43,6 +44,11 @@ function agentTypeOf(body: AgentRequest): AgentType | null {
 }
 function validUuid(value: unknown): value is string { return typeof value === "string" && uuidPattern.test(value); }
 function text(language: "zh" | "en" | undefined, zh: string, en: string) { return language === "zh" ? zh : en; }
+function shanghaiDate() {
+  const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
+  const part = (type: string) => parts.find(value => value.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -102,15 +108,39 @@ Deno.serve(async (request) => {
       return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
     }
   };
+  const deepseekBookingDecision = async () => {
+    if (!deepseekApiKey) return { error: { code: "DEEPSEEK_KEY_UNAVAILABLE", message: text(body.language, "智能助手暂不可用，请联系管理员配置 DeepSeek API。", "The assistant is unavailable. Ask an administrator to configure the DeepSeek API."), status: 503 } };
+    try {
+      const modelResponse = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST", signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "deepseek-chat", temperature: 0.1, response_format: { type: "json_object" }, messages: [
+          { role: "system", content: `You are the intake step for a laboratory booking assistant. Today is ${shanghaiDate()} in Asia/Shanghai. Return one JSON object only: {"ready":boolean,"request":object|null,"message":string|null}. Use the user's message and, only when present, the explicitly selected booking context. Set ready=true only when date, an exact start hour, duration, and device count are all known; resolve relative dates to YYYY-MM-DD. When ready=false, request the missing details in one concise, helpful ${body.language === "zh" ? "Chinese" : "English"} sentence. Never check or mention availability, capacity, database fields, defaults, internal state, or an earlier time slot. Do not invent missing booking details.` },
+          { role: "user", content: JSON.stringify({ userMessage: body.message ?? "", selectedBooking: bookingContext(input) }) },
+        ] }),
+      });
+      if (modelResponse.status === 402) return { error: { code: "DEEPSEEK_BALANCE_INSUFFICIENT", message: text(body.language, "DeepSeek API 额度不足，请充值后继续使用智能助手。", "Your DeepSeek API balance is insufficient. Top up to continue using the assistant."), status: 402 } };
+      if (!modelResponse.ok) return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
+      const completion = await modelResponse.json();
+      const content = completion?.choices?.[0]?.message?.content;
+      if (typeof content !== "string") return { error: { code: "DEEPSEEK_EMPTY_RESPONSE", message: text(body.language, "智能助手没有返回内容，请稍后重试。", "The assistant did not return a response. Please try again later."), status: 503 } };
+      const decision = JSON.parse(content);
+      const planRequest = resolveBookingPlanInput(decision);
+      const message = typeof decision?.message === "string" ? decision.message.trim() : "";
+      if (!planRequest && !message) return { error: { code: "DEEPSEEK_INVALID_RESPONSE", message: text(body.language, "智能助手没有理解这条需求，请换种说法试试。", "The assistant could not understand that request. Please try phrasing it differently."), status: 503 } };
+      return { planRequest, message };
+    } catch {
+      return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
+    }
+  };
 
   const { data: session, error: sessionError } = await supabase.rpc("v3_save_agent_session", {
     p_session_id: validUuid(body.sessionId) ? body.sessionId : null,
     p_agent_type: agentType,
     p_constraints: input,
   });
-  if (sessionError || !Array.isArray(session) || !session[0]?.session_id) return fail("SESSION_UNAVAILABLE", sessionError?.message ?? "Unable to save the agent session", 503);
+  if (sessionError || !Array.isArray(session) || !session[0]?.session_id) return fail("SESSION_UNAVAILABLE", text(body.language, "暂时无法开启助手，请稍后重试。", "The assistant could not start just now. Please try again later."), 503);
   sessionId = session[0].session_id;
-  const constraints = session[0].constraints as Record<string, unknown>;
+  const constraints = input;
 
   // Confirmation receives no client-provided time, device or issue payload.
   if (body.confirmation) {
@@ -131,8 +161,15 @@ Deno.serve(async (request) => {
     let facts: Record<string, unknown> = {};
     let proposals: unknown[] = [];
     if (agentType === "booking_planner") {
-      const { data: schedule, error } = await supabase.rpc("v3_plan_schedule", { p_request: constraints });
-      if (error) return fail("PLAN_INVALID", error.message);
+      const decision = await deepseekBookingDecision();
+      if ("error" in decision) return fail(decision.error.code, decision.error.message, decision.error.status);
+      if (!decision.planRequest) {
+        const payload = response("suggested", { guidance: true }, decision.message);
+        await audit(payload);
+        return json(payload);
+      }
+      const { data: schedule, error } = await supabase.rpc("v3_plan_schedule", { p_request: decision.planRequest });
+      if (error) return fail("PLAN_UNAVAILABLE", text(body.language, "暂时无法生成预约方案，请稍后重试。", "A reservation plan could not be prepared just now. Please try again later."), 503);
       const candidates = Array.isArray(schedule?.candidates) ? schedule.candidates.slice(0, 3) : [];
       for (const candidate of candidates) {
         const proposalResult = await supabase.rpc("v3_create_booking_proposal", { p_session_id: sessionId, p_candidate: candidate });
@@ -170,7 +207,7 @@ Deno.serve(async (request) => {
     const payload = response("suggested", facts, reply.message, proposals);
     await audit(payload);
     return json(payload);
-  } catch (error) {
-    return fail("AGENT_DATA_UNAVAILABLE", error instanceof Error ? error.message : "Agent data query failed", 503);
+  } catch {
+    return fail("AGENT_DATA_UNAVAILABLE", text(body.language, "暂时无法获取所需信息，请稍后重试。", "The assistant could not retrieve what it needs just now. Please try again later."), 503);
   }
 });

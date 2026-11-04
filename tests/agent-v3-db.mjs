@@ -16,13 +16,15 @@ try{
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     grant usage on schema auth to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;
     create extension pgcrypto with schema extensions;create publication supabase_realtime;`);
-  for(const file of ['schema.sql','cloud-migration.sql','v2-0-migration.sql','v2-1-fault-response-agent-migration.sql','v2-2-attendance-fix.sql','optional-fault-notes-migration.sql','v3-0-usage-metrics-migration.sql','v3-1-agent-layer-migration.sql','v3-2-agent-fault-note-compat.sql']) await db.exec(await fs.readFile(new URL(file,root),'utf8'));
+  for(const file of ['schema.sql','cloud-migration.sql','v2-0-migration.sql','v2-1-fault-response-agent-migration.sql','v2-2-attendance-fix.sql','optional-fault-notes-migration.sql','v3-0-usage-metrics-migration.sql','v3-1-agent-layer-migration.sql','v3-2-agent-fault-note-compat.sql','v3-3-agent-session-clarification-fix.sql']) await db.exec(await fs.readFile(new URL(file,root),'utf8'));
   for(const [id,name] of [[student,'Student'],[other,'Other'],[admin,'Admin']]) await db.query('insert into auth.users values($1,$2,$3)',[id,`${name}@lab.test`,{login_id:name,display_name:name}]);
   await db.query(`update public.profiles set role='admin' where id=$1`,[admin]);
   const asUser=async id=>{await db.exec('reset role');await db.query(`select set_config('request.jwt.claim.sub',$1,false)`,[id]);await db.exec('set role authenticated')};
   const date=(await db.query(`select (min(effective_at) at time zone 'Asia/Shanghai')::date as date from public.device_status_history`)).rows[0].date;
   await asUser(student);
   const session=(await db.query(`select * from public.v3_save_agent_session(null,'booking_planner',$1::jsonb)`,[{}])).rows[0];
+  const mergedSession=(await db.query(`select * from public.v3_save_agent_session($1::uuid,'booking_planner',$2::jsonb)`,[session.session_id,{has_explicit_booking_selection:true}])).rows[0];
+  assert.equal(mergedSession.constraints.has_explicit_booking_selection,true);
   const plan=(await db.query(`select public.v3_plan_schedule($1::jsonb) as plan`,[{date,startHours:[8],durationHours:1,requiredDeviceCount:2,preferredDevices:[1,2]}])).rows[0].plan;
   assert.ok(plan.candidates.length>=1);
   const proposal=(await db.query(`select public.v3_create_booking_proposal($1::uuid,$2::jsonb) as proposal`,[session.session_id,plan.candidates[0]])).rows[0].proposal;

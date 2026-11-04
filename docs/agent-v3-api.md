@@ -23,7 +23,7 @@
 }
 ```
 
-`booking_planner` accepts `date` as a single-day shorthand. `weekdays` follows PostgreSQL `extract(dow)`: Sunday 0 through Saturday 6. The planner enforces 90 days and 360 device-hours. `admin_analyst` accepts `startDate`, `endDate`, and optional `deviceNumber`. `fault_responder` requires `issueId`; add `actionType` (`isolate_fault` or `complete_fault_repair`) and `note` to request an action proposal.
+`booking_planner` accepts `date` as a single-day shorthand. `weekdays` follows PostgreSQL `extract(dow)`: Sunday 0 through Saturday 6. The planner enforces 90 days and 360 device-hours. A browser-selected reservation is sent as `input.bookingSelection`; otherwise DeepSeek first asks for any missing date, exact start time, duration, or device count, without checking availability. `admin_analyst` accepts `startDate`, `endDate`, and optional `deviceNumber`. `fault_responder` requires `issueId`; add `actionType` (`isolate_fault` or `complete_fault_repair`) and `note` to request an action proposal.
 
 Compatibility: old callers using `mode: "booking" | "admin"` are mapped to the first two types. They should migrate because legacy response fields such as top-level `candidates` are no longer authoritative.
 

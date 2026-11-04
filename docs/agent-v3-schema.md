@@ -41,6 +41,7 @@ Apply in order:
 2. `v3-0-usage-metrics-migration.sql`.
 3. `v3-1-agent-layer-migration.sql`.
 4. `v3-2-agent-fault-note-compat.sql`.
+5. `v3-3-agent-session-clarification-fix.sql`.
 
 ## Verification and rollback
 

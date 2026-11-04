@@ -73,6 +73,14 @@ test('administrator dashboard and agent use the V3 metric contract',()=>{
   assert.match(agent,/v3_admin_usage_metrics/);
   assert.match(agent,/historical capacity data is incomplete/);
   assert.match(agent,/DEEPSEEK_BALANCE_INSUFFICIENT/);
+  assert.match(agent,/deepseekBookingDecision/);
+  assert.match(agent,/selectedBooking: bookingContext\(input\)/);
+  assert.match(agent,/p_request: decision\.planRequest/);
+  assert.doesNotMatch(agent,/p_request: constraints/);
+  assert.ok(agent.indexOf("deepseekBookingDecision()") < agent.indexOf('supabase.rpc("v3_plan_schedule"'));
+  assert.match(app,/bookingSelection:desks\.size/);
+  const sessionFix=fs.readFileSync(path.resolve(__dirname,'../backend/supabase/v3-3-agent-session-clarification-fix.sql'),'utf8');
+  assert.match(sessionFix,/set constraints = session_row\.constraints/);
   assert.doesNotMatch(agent,/outcome = "fallback"/);
   assert.doesNotMatch(app,/function plannerReply/);
   assert.match(app,/esc\(response\.message\)/);
