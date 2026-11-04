@@ -81,6 +81,27 @@ Deno.serve(async (request) => {
     await audit(payload, message);
     return json(payload, status);
   };
+  const deepseekReply = async (facts: Record<string, unknown>, proposalCount: number, operation?: string) => {
+    if (!deepseekApiKey) return { error: { code: "DEEPSEEK_KEY_UNAVAILABLE", message: text(body.language, "智能助手暂不可用，请联系管理员配置 DeepSeek API。", "The assistant is unavailable. Ask an administrator to configure the DeepSeek API."), status: 503 } };
+    try {
+      const modelResponse = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST", signal: AbortSignal.timeout(10_000),
+        headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "deepseek-chat", temperature: 0.2, messages: [
+          { role: "system", content: `You are the user-facing ${agentType} assistant. Explain only the supplied facts in concise, natural ${body.language === "zh" ? "Chinese" : "English"}. Never show JSON, database fields, implementation details, or internal error codes. Do not invent availability, execute actions, request secrets, or claim a proposal is confirmed unless the supplied operation says it is complete. If historical capacity data is incomplete, state that the result is only a guide and do not judge efficiency.` },
+          { role: "user", content: JSON.stringify({ userMessage: body.message ?? "", facts, proposalCount, operation }) },
+        ] }),
+      });
+      if (modelResponse.status === 402) return { error: { code: "DEEPSEEK_BALANCE_INSUFFICIENT", message: text(body.language, "DeepSeek API 额度不足，请充值后继续使用智能助手。", "Your DeepSeek API balance is insufficient. Top up to continue using the assistant."), status: 402 } };
+      if (!modelResponse.ok) return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
+      const completion = await modelResponse.json();
+      const content = completion?.choices?.[0]?.message?.content;
+      if (typeof content !== "string" || !content.trim()) return { error: { code: "DEEPSEEK_EMPTY_RESPONSE", message: text(body.language, "智能助手没有返回内容，请稍后重试。", "The assistant did not return a response. Please try again later."), status: 503 } };
+      return { message: content.trim() };
+    } catch {
+      return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
+    }
+  };
 
   const { data: session, error: sessionError } = await supabase.rpc("v3_save_agent_session", {
     p_session_id: validUuid(body.sessionId) ? body.sessionId : null,
@@ -97,8 +118,12 @@ Deno.serve(async (request) => {
     const rpcName = agentType === "booking_planner" ? "v3_create_reservation_plan" : "v3_execute_agent_proposal";
     const { data, error } = await supabase.rpc(rpcName, { p_proposal_id: body.confirmation.proposalId, p_idempotency_key: body.confirmation.idempotencyKey });
     if (error) return fail("PROPOSAL_EXECUTION_FAILED", error.message, 409);
-    const payload = response("confirmed", { execution: data ?? {} }, text(body.language, "提案已原子执行。", "The proposal was executed atomically."));
-    await audit(payload);
+    const facts = { execution: data ?? {} };
+    const reply = await deepseekReply(facts, 0, "The confirmed operation has completed successfully.");
+    const payload = "error" in reply
+      ? response("confirmed", facts, reply.error.message, [], [{ code: reply.error.code, message: reply.error.message }])
+      : response("confirmed", facts, reply.message);
+    await audit(payload, "error" in reply ? reply.error.message : null);
     return json(payload);
   }
 
@@ -140,28 +165,10 @@ Deno.serve(async (request) => {
       }
     }
 
-    // When capacity_data_complete is false, never let an explanation imply low efficiency.
-    const capacityDataIncomplete = (facts.usageMetrics as Record<string, unknown> | undefined)?.capacity_data_complete === false;
-    let message = text(body.language, "已生成基于数据库实时事实的建议，请确认提案后再执行。", "A recommendation based on live database facts is ready; confirm a proposal to execute it.");
-    if (capacityDataIncomplete) message += text(body.language, " 历史设备状态数据不足，利用率不能用于判断资源效率。", " Historical device-status data is incomplete, so utilization cannot support an efficiency conclusion.");
-    let outcome: AgentResponse["outcome"] = "suggested";
-    if (deepseekApiKey) {
-      try {
-        const modelResponse = await fetch("https://api.deepseek.com/chat/completions", {
-          method: "POST", signal: AbortSignal.timeout(10_000),
-          headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "deepseek-chat", temperature: 0.2, messages: [
-            { role: "system", content: `You explain only the supplied database facts for ${agentType}. Do not invent availability, execute actions, request secrets, or claim a proposal is confirmed. Reply in ${body.language === "zh" ? "Chinese" : "English"}.` },
-            { role: "user", content: JSON.stringify({ userMessage: body.message ?? "", facts, proposalCount: proposals.length }) },
-          ] }),
-        });
-        const completion = modelResponse.ok ? await modelResponse.json() : null;
-        const content = completion?.choices?.[0]?.message?.content;
-        if (typeof content === "string" && content.trim()) message = content.trim(); else outcome = "fallback";
-      } catch { outcome = "fallback"; }
-    } else outcome = "fallback";
-    const payload = response(outcome, facts, message, proposals);
-    await audit(payload, outcome === "fallback" ? "LLM unavailable or timed out; deterministic facts retained" : null);
+    const reply = await deepseekReply(facts, proposals.length);
+    if ("error" in reply) return fail(reply.error.code, reply.error.message, reply.error.status);
+    const payload = response("suggested", facts, reply.message, proposals);
+    await audit(payload);
     return json(payload);
   } catch (error) {
     return fail("AGENT_DATA_UNAVAILABLE", error instanceof Error ? error.message : "Agent data query failed", 503);

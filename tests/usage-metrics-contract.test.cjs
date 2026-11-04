@@ -71,5 +71,9 @@ test('administrator dashboard and agent use the V3 metric contract',()=>{
   assert.match(app,/actual_usage_rate/);
   assert.match(app,/capacity_data_limitations/);
   assert.match(agent,/v3_admin_usage_metrics/);
-  assert.match(agent,/capacity_data_complete is false/);
+  assert.match(agent,/historical capacity data is incomplete/);
+  assert.match(agent,/DEEPSEEK_BALANCE_INSUFFICIENT/);
+  assert.doesNotMatch(agent,/outcome = "fallback"/);
+  assert.doesNotMatch(app,/function plannerReply/);
+  assert.match(app,/esc\(response\.message\)/);
 });

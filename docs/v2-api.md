@@ -23,4 +23,4 @@ All database RPCs require a Supabase authenticated JWT. Every write is executed 
 
 `POST /functions/v1/deepseek-booking-agent`
 
-The body is `{ mode: "booking" | "admin", message, input, confirmation? }`. A booking-mode request returns suggestions only. A second request with `confirmation.accepted: true` invokes the normal V2 booking RPC. An unavailable DeepSeek service falls back to the database scheduling candidates (or live administrator metrics) and returns `outcome: "fallback"`.
+The body is `{ mode: "booking" | "admin", message, input, confirmation? }`. A booking-mode request returns suggestions only. A second request with `confirmation.accepted: true` invokes the normal V2 booking RPC. User-facing assistant prose requires DeepSeek; insufficient balance returns a recharge prompt instead of a rules-based fallback.

@@ -34,13 +34,17 @@ test('assistant heading displays the generic name in Chinese and English',()=>{
   const {run}=setup();run(`globalThis.heading='';head=(kicker,title)=>heading=title;agentPage()`);
   assert.equal(run('heading'),'预约助手');run(`language='en'`);assert.equal(run('tr(heading)'),'Booking assistant');
 });
-test('assistant turns a started slot into a clear instruction without raw database details',()=>{
+test('assistant renders the model reply without raw database details',()=>{
   const {run,node}=setup();run(`language='en';agentResponse={message:'A recommendation based on live database facts is ready',facts:{schedule:{failures:[{date:'2026-11-04',hour:8,reason:'slot_has_started'}],timezone:'Asia/Shanghai',contract:'internal'}},proposals:[]};agentPage()`);
-  assert.match(node('#content').innerHTML,/has already started/);assert.doesNotMatch(node('#content').innerHTML,/slot_has_started|timezone|internal/);
+  assert.match(node('#content').innerHTML,/A recommendation based on live database facts is ready/);assert.doesNotMatch(node('#content').innerHTML,/slot_has_started|timezone|internal/);
 });
 test('assistant starts with task cards and a complete composer',()=>{
   const {run,node}=setup();run(`agentResponse=null;agentPage()`);
   assert.match(node('#content').innerHTML,/agent-starters/);assert.match(node('#content').innerHTML,/assistant-orbit/);assert.match(node('#content').innerHTML,/class="agent-send"/);assert.match(run('agentPage.toString()'),/event\.key==="Enter"/);
+});
+test('assistant shows the DeepSeek balance message returned by the API',async()=>{
+  const {run,node}=setup();run(`crypto={randomUUID:()=> 'request'};supabase.functions={invoke:async()=>({data:null,error:{context:{clone(){return this},json:async()=>({errors:[{message:'DeepSeek API balance is insufficient. Top up to continue.'}]})}}})}`);
+  await run('askAgent()');assert.match(node('#content').innerHTML,/balance is insufficient/);
 });
 test('the dashboard report button calls the selection-aware handler',()=>{
   const {run}=setup();assert.match(run('dashStudent.toString()'),/q\("#report"\)\.onclick=reportSelectedDevice/);
