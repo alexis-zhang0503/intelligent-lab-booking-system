@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "../src/ui_theme.h"
+
 typedef struct {
     const char *path, *response;
     int status;
@@ -170,6 +173,14 @@ static void model_and_signup(void) {
     lab_session_clear(&c.session);
 }
 int main(void) {
+    LabClient previewClient={0};LabModel previewModel={0};char display[160],prefs[256];
+    ui_preview_model(&previewClient,&previewModel);
+    ui_time("2026-11-04T18:02:00Z",display,sizeof(display));assert(!strcmp(display,"2026-11-05 02:02"));
+    assert(ui_timestamp("2026-11-04T09:02:00+08:00")==ui_timestamp("2026-11-04T01:02:00.000+00:00"));
+    ui_duration(ui_usage(&previewModel,cJSON_GetArrayItem(previewModel.bookings,0)),display,sizeof(display));assert(!strcmp(display,"50 分钟"));
+    ui_summary(&previewModel,&previewClient.session,"2026-11-04",display,sizeof(display),prefs,sizeof(prefs));assert(strstr(display,"1 个预约"));
+    assert(!strcmp(ui_page_title(4),"智能助手"));assert(!strcmp(ui_status("confirmed"),"已预约"));
+    lab_model_free(&previewModel);lab_session_clear(&previewClient.session);
     model_and_signup();
     auth();
     refresh();
