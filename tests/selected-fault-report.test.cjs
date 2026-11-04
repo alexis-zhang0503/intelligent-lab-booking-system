@@ -38,6 +38,10 @@ test('assistant turns a started slot into a clear instruction without raw databa
   const {run,node}=setup();run(`language='en';agentResponse={message:'A recommendation based on live database facts is ready',facts:{schedule:{failures:[{date:'2026-11-04',hour:8,reason:'slot_has_started'}],timezone:'Asia/Shanghai',contract:'internal'}},proposals:[]};agentPage()`);
   assert.match(node('#content').innerHTML,/has already started/);assert.doesNotMatch(node('#content').innerHTML,/slot_has_started|timezone|internal/);
 });
+test('assistant starts with task cards and a complete composer',()=>{
+  const {run,node}=setup();run(`agentResponse=null;agentPage()`);
+  assert.match(node('#content').innerHTML,/agent-starters/);assert.match(node('#content').innerHTML,/assistant-orbit/);assert.match(node('#content').innerHTML,/id="askAgent"/);
+});
 test('the dashboard report button calls the selection-aware handler',()=>{
   const {run}=setup();assert.match(run('dashStudent.toString()'),/q\("#report"\)\.onclick=reportSelectedDevice/);
 });
