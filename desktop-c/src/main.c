@@ -772,7 +772,7 @@ static void paint_workspace(HDC dc){
 /* Capture only our fixture window; never reads another application's pixels. */
 static int preview_capture(HWND h) {
  RECT r;GetClientRect(h,&r);int w=r.right,height=r.bottom;HDC dc=GetDC(h),mem=CreateCompatibleDC(dc);HBITMAP bitmap=CreateCompatibleBitmap(dc,w,height);HGDIOBJ old=SelectObject(mem,bitmap);
- BitBlt(mem,0,0,w,height,dc,0,0,SRCCOPY);SelectObject(mem,old);
+ PrintWindow(h,mem,3);SelectObject(mem,old);
  BITMAPINFO info={0};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=w;info.bmiHeader.biHeight=-height;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;
  DWORD bytes=(DWORD)(w*height*4);void *pixels=calloc(1,bytes);int ok=pixels&&GetDIBits(dc,bitmap,0,height,pixels,&info,DIB_RGB_COLORS);FILE *f=NULL;
  if(ok)f=_wfopen(previewOutput,L"wb");
