@@ -40,7 +40,7 @@ test('assistant turns a started slot into a clear instruction without raw databa
 });
 test('assistant starts with task cards and a complete composer',()=>{
   const {run,node}=setup();run(`agentResponse=null;agentPage()`);
-  assert.match(node('#content').innerHTML,/agent-starters/);assert.match(node('#content').innerHTML,/assistant-orbit/);assert.doesNotMatch(node('#content').innerHTML,/id="askAgent"/);assert.match(run('agentPage.toString()'),/event\.key==="Enter"/);
+  assert.match(node('#content').innerHTML,/agent-starters/);assert.match(node('#content').innerHTML,/assistant-orbit/);assert.match(node('#content').innerHTML,/class="agent-send"/);assert.match(run('agentPage.toString()'),/event\.key==="Enter"/);
 });
 test('the dashboard report button calls the selection-aware handler',()=>{
   const {run}=setup();assert.match(run('dashStudent.toString()'),/q\("#report"\)\.onclick=reportSelectedDevice/);
