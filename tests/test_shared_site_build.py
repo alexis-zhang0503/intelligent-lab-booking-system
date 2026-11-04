@@ -3,6 +3,8 @@ import json
 import re
 import tempfile
 import unittest
+import zipfile
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,5 +43,30 @@ class SharedSiteBuildTests(unittest.TestCase):
         with self.assertRaises(ValueError): builder.build(ROOT, 'safe')
         with self.assertRaises(ValueError): builder.build(self.out, '../bad')
         with self.assertRaises(ValueError): builder.build(Path(self.temp.name), 'safe')
+
+
+
+class NativeDownloadTests(unittest.TestCase):
+    def test_native_manifest_and_download(self):
+        spec = importlib.util.spec_from_file_location('package_native', ROOT / 'scripts/package_native.py')
+        packager = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(packager)
+        with tempfile.TemporaryDirectory() as temp:
+            site = builder.build(Path(temp) / 'site', 'native-test')
+            archive = Path(temp) / 'desktop.zip'
+            with zipfile.ZipFile(archive, 'w') as output:
+                output.writestr('LabReservation.exe', b'MZ-test-fixture')
+            manifest = packager.attach(site, archive)
+            self.assertRegex(manifest['version'], r'^\d+\.\d+\.\d+$')
+            self.assertEqual(manifest['sha256'], hashlib.sha256(archive.read_bytes()).hexdigest())
+            self.assertEqual((site / manifest['download']).read_bytes(), archive.read_bytes())
+            self.assertEqual(json.loads((site / 'native-desktop.json').read_text()), manifest)
+            with self.assertRaises(ValueError):
+                packager.attach(Path(temp), archive)
+            with zipfile.ZipFile(archive, 'w') as output:
+                output.writestr('LabReservation.exe', b'MZ-test-fixture')
+                output.writestr('WebView2Loader.dll', b'unwanted')
+            with self.assertRaises(ValueError):
+                packager.attach(site, archive)
 
 if __name__ == '__main__': unittest.main()
