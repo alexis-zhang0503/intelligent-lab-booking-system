@@ -49,6 +49,7 @@ static void ui_summary(const LabModel *m,const LabSession *s,const char *date,ch
 }
 static int64_t ui_timestamp(const char *value) {
     int y,mo,d,h,mi,se;
+    if(strlen(value)<19)return 0;
     if(sscanf(value,"%d-%d-%dT%d:%d:%d",&y,&mo,&d,&h,&mi,&se)!=6)return 0;
     char date[32];snprintf(date,sizeof(date),"%04d-%02d-%02d",y,mo,d);
     cJSON *b=cJSON_CreateObject();cJSON_AddStringToObject(b,"reservation_date",date);cJSON_AddNumberToObject(b,"start_hour",8);
