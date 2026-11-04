@@ -24,7 +24,7 @@ try {
         & rc.exe /nologo /fo "$OutDir\app.res" app.rc
         if ($LASTEXITCODE -ne 0) { throw 'Resource compilation failed.' }
     } finally { Pop-Location }
-    & cl.exe /nologo /TC /std:c11 /utf-8 /O2 /MT /W4 /DUNICODE /D_UNICODE "/I$SdkRoot\build\native\include" "$PSScriptRoot\src\main.c" app.res /Fe:LabReservation.exe /link /SUBSYSTEM:WINDOWS ole32.lib shell32.lib uuid.lib user32.lib gdi32.lib
+    & cl.exe /nologo /TC /std:c11 /utf-8 /O2 /MT /W4 /DUNICODE /D_UNICODE "/I$SdkRoot\build\native\include" "$PSScriptRoot\src\main.c" /Fe:LabReservation.exe /link app.res /SUBSYSTEM:WINDOWS ole32.lib shell32.lib uuid.lib user32.lib gdi32.lib
     if ($LASTEXITCODE -ne 0) { throw 'C desktop compilation failed.' }
     & cl.exe /nologo /TC /std:c11 /W4 "$PSScriptRoot\tests\site_policy_test.c" /Fe:SitePolicyCheck.exe
     if ($LASTEXITCODE -ne 0) { throw 'C policy test compilation failed.' }
