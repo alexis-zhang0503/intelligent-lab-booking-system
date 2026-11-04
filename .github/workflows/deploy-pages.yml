@@ -15,7 +15,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile and test native C desktop
+        shell: pwsh
+        run: |
+          ./desktop-c/build.ps1
+          Compress-Archive -Path desktop-c/dist/* -DestinationPath LabReservation-Windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pages-native-download
+          path: LabReservation-Windows-x64.zip
   deploy:
+    needs: native
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -25,8 +42,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build shared web and desktop UI
+      - name: Build versioned web site
         run: python scripts/build_site.py --out _site --version "${{ github.sha }}"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pages-native-download
+          path: native-download
+      - name: Attach native desktop download and version manifest
+        run: python scripts/package_native.py --site _site --zip native-download/LabReservation-Windows-x64.zip
       - uses: actions/configure-pages@v5
         with:
           enablement: true

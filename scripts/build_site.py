@@ -1,4 +1,4 @@
-"""Build the shared desktop/web UI with one version for every local asset."""
+"""Build the web site with one version for every local asset."""
 import argparse, json, re, shutil
 from pathlib import Path
 
