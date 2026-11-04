@@ -99,7 +99,7 @@ static void render(void){
  for(int i=0;i<15;i++){
  int id=actionIds[i],show=1;
  if(id==ID_BOOK||id==ID_SUGGEST)show=page==0;
- if(id==ID_ATTEND||id==ID_CANCEL)show=page==1||(page==0&&admin());
+ if(id==ID_ATTEND||id==ID_CANCEL)show=page==1;
  if(id==ID_REPORT)show=page==2||page==0;
  if(id==ID_REPAIR||id==ID_ARCHIVE)show=page==2&&admin();
  if(id==ID_DEACTIVATE||id==ID_INVITE||id==ID_METRICS)show=page==3&&admin();
@@ -110,7 +110,7 @@ static void render(void){
  }
  const char *date=gtk_entry_get_text(GTK_ENTRY(dateEdit));int start=8+gtk_combo_box_get_active(GTK_COMBO_BOX(startEdit)),end=9+gtk_combo_box_get_active(GTK_COMBO_BOX(endEdit)),selectedCount=0;
  char today[160],prefs[256],identityText[384];
- ui_summary(&model,&client.session,date,today,sizeof(today),prefs,sizeof(prefs));
+ GDateTime *utcNow=g_date_time_new_now_utc(),*cstNow=g_date_time_add_hours(utcNow,8);char *todayDate=g_date_time_format(cstNow,"%Y-%m-%d");ui_summary(&model,&client.session,todayDate,today,sizeof(today),prefs,sizeof(prefs));g_free(todayDate);g_date_time_unref(cstNow);g_date_time_unref(utcNow);
  snprintf(identityText,sizeof(identityText),"%s  ·  %s  ·  %s",client.session.name,admin()?"管理员":"学生",client.session.login);
  gtk_label_set_text(GTK_LABEL(sidebarIdentity),identityText);gtk_label_set_text(GTK_LABEL(profileName),identityText);gtk_label_set_text(GTK_LABEL(todayLabel),today);gtk_label_set_text(GTK_LABEL(preferenceLabel),prefs);
  for(int i=0;i<40;i++){
