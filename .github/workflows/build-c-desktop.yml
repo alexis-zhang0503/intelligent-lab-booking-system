@@ -1,0 +1,34 @@
+name: Build shared-UI C desktop
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-c:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build pure C Windows desktop
+        shell: pwsh
+        run: ./desktop-c/build.ps1
+      - name: Verify Windows application startup
+        shell: pwsh
+        run: |
+          $app = Start-Process desktop-c/dist/LabReservation.exe -PassThru
+          try {
+            Start-Sleep -Seconds 6
+            $app.Refresh()
+            if ($app.HasExited) { throw 'Desktop exited during startup.' }
+            if (-not $app.MainWindowHandle) { throw 'Desktop window was not created.' }
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NJUPT-Lab-C-Desktop-Windows-x64
+          path: desktop-c/dist/
