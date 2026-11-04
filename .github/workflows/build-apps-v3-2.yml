@@ -1,0 +1,91 @@
+name: Build downloadable v3.2 desktop applications
+on:
+  push:
+    branches: [release-source-v3-2]
+    paths: [.github/workflows/build-apps-v3-2.yml]
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: Windows-x64
+          - os: macos-15
+            platform: macOS-arm64
+          - os: macos-15-intel
+            platform: macOS-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Recover exact v3.2 source
+        shell: python
+        run: |
+          import base64, hashlib, pathlib, zipfile, io
+          data = base64.b64decode(''.join(p.read_text() for p in sorted(pathlib.Path('release-source-v3.2').glob('part-*.b64'))))
+          assert hashlib.sha256(data).hexdigest() == '8b6f405f5c9c4145b8727f5b90acbe5a00fa17e6eb4129f8f4070322a2066ea4'
+          zipfile.ZipFile(io.BytesIO(data)).extractall('package')
+          pathlib.Path('deliverables').mkdir()
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        id: msys
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-pkgconf
+      - name: Build and verify Windows application
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & ./package/project/desktop-c/build.ps1 -Toolchain '${{ steps.msys.outputs.msys2-location }}/ucrt64'
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+          Compress-Archive -Path package/project/desktop-c/dist/* -DestinationPath deliverables/LabReservation-Windows-x64-v3.2.0.zip
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install gtk+3 dylibbundler pkg-config
+      - name: Build and verify macOS application
+        if: runner.os == 'macOS'
+        run: |
+          bash package/project/desktop-c/macos/build.sh
+          mkdir -p "$RUNNER_TEMP/relocated"
+          cp -R package/project/desktop-c/dist/LabReservation.app "$RUNNER_TEMP/relocated/"
+          "$RUNNER_TEMP/relocated/LabReservation.app/Contents/MacOS/LabReservation" --smoke-test
+          ditto -c -k --keepParent "$RUNNER_TEMP/relocated/LabReservation.app" "deliverables/LabReservation-${{ matrix.platform }}-v3.2.0.zip"
+          mkdir -p "$RUNNER_TEMP/dmg-root"
+          cp -R "$RUNNER_TEMP/relocated/LabReservation.app" "$RUNNER_TEMP/dmg-root/"
+          ln -s /Applications "$RUNNER_TEMP/dmg-root/Applications"
+          hdiutil create -volname 'LabReservation 3.2.0' -srcfolder "$RUNNER_TEMP/dmg-root" -ov -format UDZO "deliverables/LabReservation-${{ matrix.platform }}-v3.2.0.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.platform }}
+          path: deliverables/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: deliverables
+          merge-multiple: true
+      - name: Verify all platforms and upload downloadable apps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd deliverables
+          test -s LabReservation-Windows-x64-v3.2.0.zip
+          test -s LabReservation-macOS-arm64-v3.2.0.dmg
+          test -s LabReservation-macOS-x64-v3.2.0.dmg
+          sha256sum LabReservation-* > SHA256SUMS-apps-v3.2.0.txt
+          gh release upload v3.1.0 LabReservation-* SHA256SUMS-apps-v3.2.0.txt --repo "$GITHUB_REPOSITORY" --clobber
