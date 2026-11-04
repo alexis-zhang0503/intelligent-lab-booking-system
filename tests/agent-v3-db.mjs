@@ -16,7 +16,7 @@ try{
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     grant usage on schema auth to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;
     create extension pgcrypto with schema extensions;create publication supabase_realtime;`);
-  for(const file of ['schema.sql','cloud-migration.sql','v2-0-migration.sql','v2-1-fault-response-agent-migration.sql','v2-2-attendance-fix.sql','v3-0-usage-metrics-migration.sql','v3-1-agent-layer-migration.sql']) await db.exec(await fs.readFile(new URL(file,root),'utf8'));
+  for(const file of ['schema.sql','cloud-migration.sql','v2-0-migration.sql','v2-1-fault-response-agent-migration.sql','v2-2-attendance-fix.sql','optional-fault-notes-migration.sql','v3-0-usage-metrics-migration.sql','v3-1-agent-layer-migration.sql','v3-2-agent-fault-note-compat.sql']) await db.exec(await fs.readFile(new URL(file,root),'utf8'));
   for(const [id,name] of [[student,'Student'],[other,'Other'],[admin,'Admin']]) await db.query('insert into auth.users values($1,$2,$3)',[id,`${name}@lab.test`,{login_id:name,display_name:name}]);
   await db.query(`update public.profiles set role='admin' where id=$1`,[admin]);
   const asUser=async id=>{await db.exec('reset role');await db.query(`select set_config('request.jwt.claim.sub',$1,false)`,[id]);await db.exec('set role authenticated')};
@@ -45,10 +45,14 @@ try{
   const faultProposal=(await db.query(`select public.v3_create_fault_proposal($1::uuid,'isolate_fault',$2::uuid,'Test isolation') as proposal`,[faultSession.session_id,issue.id])).rows[0].proposal;
   await db.query(`select public.v3_execute_agent_proposal($1::uuid,$2::uuid)`,[faultProposal.proposalId,'10000000-0000-0000-0000-000000000006']);
   assert.equal((await db.query(`select status from public.devices where number=1`)).rows[0].status,'faulty');
+  const repairSession=(await db.query(`select * from public.v3_save_agent_session(null,'fault_responder','{}'::jsonb)`)).rows[0];
+  const repairProposal=(await db.query(`select public.v3_create_fault_proposal($1::uuid,'complete_fault_repair',$2::uuid,'') as proposal`,[repairSession.session_id,issue.id])).rows[0].proposal;
+  await db.query(`select public.v3_execute_agent_proposal($1::uuid,$2::uuid)`,[repairProposal.proposalId,'10000000-0000-0000-0000-000000000007']);
+  assert.equal((await db.query(`select status from public.devices where number=1`)).rows[0].status,'available');
   assert.equal((await db.query(`select status from public.reservations where id=$1`,[confirmed.reservationIds[0]])).rows[0].status,'confirmed');
   await asUser(student);
   const cancellation=(await db.query(`select public.v3_cancel_reservation_series($1::uuid) as result`,[confirmed.seriesId])).rows[0].result;
   assert.equal(Number(cancellation.cancelledCount),2);
   assert.equal((await db.query(`select count(*) as count from public.reservations where id=any($1::uuid[]) and status='cancelled'`,[confirmed.reservationIds])).rows[0].count,2);
-  console.log('PASS: V3 proposal confirmation is idempotent; user-slot and cross-user device guards apply to V3 and V2 paths; fault isolation preserves reservations; future series cancellation is grouped');
+  console.log('PASS: V3 proposal confirmation is idempotent; user-slot and cross-user device guards apply to V3 and V2 paths; fault isolation and empty-note repair preserve reservations; future series cancellation is grouped');
 }finally{await db.close()}

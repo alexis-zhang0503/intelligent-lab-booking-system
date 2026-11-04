@@ -40,6 +40,7 @@ Apply in order:
 1. `schema.sql`, `cloud-migration.sql`, `v2-0-migration.sql`, `v2-1-fault-response-agent-migration.sql`, `v2-2-attendance-fix.sql`.
 2. `v3-0-usage-metrics-migration.sql`.
 3. `v3-1-agent-layer-migration.sql`.
+4. `v3-2-agent-fault-note-compat.sql`.
 
 ## Verification and rollback
 
