@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../src/ui_theme.h"
 char *lab_mac_http(void *,const char *,const char *,const char *,const char *,const char *,const char *,int *,char *,size_t);
 enum {
     ID_LOGIN = 100,
@@ -58,16 +59,21 @@ typedef struct {
     int ok, loaded;
 } Job;
 
-static GtkWidget *window,*authBox,*workBox,*identity,*password,*nameEdit,*inviteEdit,*dateEdit,*startEdit,*endEdit,*noteEdit,*statusText,*grid,*list,*pageEdit,*actionBox;
+static GtkWidget *window,*authBox,*workBox,*identity,*password,*nameEdit,*inviteEdit,*dateEdit,*startEdit,*endEdit,*noteEdit,*statusText,*grid,*list,*actionBox;
 static GtkWidget *deviceButtons[40],*actions[15];
 static GtkListStore *rows;
+static GtkWidget *nav[5],*heading,*subtitle,*bookingBox,*filters,*profileBox,*profileName,*todayLabel,*preferenceLabel,*tableBox,*agentBox,*commonActions,*bookingActions,*selectionLabel,*profileFault,*agentReply,*sidebarActions,*sidebarIdentity,*labStatus,*faultActions;
+static int preview;
+static const char *previewOutput;
+static int previewFailed;
+static gboolean preview_capture(gpointer unused){(void)unused;GdkWindow *w=gtk_widget_get_window(window);GdkPixbuf *image=gdk_pixbuf_get_from_window(w,0,0,gdk_window_get_width(w),gdk_window_get_height(w));GError *error=NULL;previewFailed=!image||!gdk_pixbuf_save(image,previewOutput,"png",&error,NULL);if(error){g_printerr("%s\n",error->message);g_error_free(error);}if(image)g_object_unref(image);gtk_main_quit();return G_SOURCE_REMOVE;}
 static LabClient client;
 static LabModel model;
 static int busy,logged,page;
 static cJSON *listed[100000];
 static int listedCount;
 static const int actionIds[]={ID_REFRESH,ID_LOGOUT,ID_BOOK,ID_ATTEND,ID_CANCEL,ID_REPORT,ID_REPAIR,ID_ARCHIVE,ID_DEACTIVATE,ID_INVITE,ID_METRICS,ID_UPDATE,ID_PROFILE,ID_SUGGEST,ID_AGENT};
-static const char *actionNames[]={"刷新","退出账号","预约所选设备","签到 / 签退","取消预约","提交故障","完成维修","归档故障","停用学生","生成邀请码","统计报表","检查版本","修改资料","推荐时段","智能分析"};
+static const char *actionNames[]={"刷新","退出账号","确认预约 →","签到 / 签退","取消预约","报告设备故障","完成维修","归档故障","停用学生","生成邀请码","统计报表","检查版本","修改资料","智能推荐","智能分析"};
 static int admin(void){return !strcmp(client.session.role,"admin");}
 static int64_t now_ms(void){return g_get_real_time()/1000;}
 static void tell(const char *text){GtkWidget *d=gtk_message_dialog_new(GTK_WINDOW(window),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_OK,"%s",text);gtk_dialog_run(GTK_DIALOG(d));gtk_widget_destroy(d);}
@@ -75,43 +81,72 @@ static int confirm(const char *text){GtkWidget *d=gtk_message_dialog_new(GTK_WIN
 static void render(void){
  gtk_widget_set_visible(authBox,!logged);gtk_widget_set_visible(workBox,logged);gtk_list_store_clear(rows);listedCount=0;
  if(!logged)return;
- gtk_widget_set_visible(grid,page==0);
+ gtk_label_set_text(GTK_LABEL(heading),ui_page_title(page));
+ gtk_label_set_text(GTK_LABEL(subtitle),page==0?"选定设备，约好时间。":page==1?"个人资料、今日预约和实际使用记录":page==4?"根据设备与时段，寻找合适的预约方案":"NJUPT · 实验室预约");
+ gtk_widget_set_visible(bookingBox,page==0);gtk_widget_set_visible(profileBox,page==1);
+ gtk_widget_set_visible(tableBox,page!=4);gtk_widget_set_visible(agentBox,page==4);
+ for(int i=0;i<5;i++){
+   gtk_widget_set_visible(nav[i],(i!=2&&i!=3)||admin());
+   GtkStyleContext *style=gtk_widget_get_style_context(nav[i]);
+   if(i==page)gtk_style_context_add_class(style,"active");else gtk_style_context_remove_class(style,"active");
+ }
+ gtk_widget_set_visible(profileFault,page==1||page==2);
+ GtkWidget *faultDestination=page==0?faultActions:commonActions;if(gtk_widget_get_parent(actions[5])!=faultDestination){g_object_ref(actions[5]);gtk_container_remove(GTK_CONTAINER(gtk_widget_get_parent(actions[5])),actions[5]);gtk_box_pack_start(GTK_BOX(faultDestination),actions[5],FALSE,FALSE,0);g_object_unref(actions[5]);}
+ gtk_orientable_set_orientation(GTK_ORIENTABLE(actionBox),page==0?GTK_ORIENTATION_VERTICAL:GTK_ORIENTATION_HORIZONTAL);
+ GtkWidget *destination=page==0?bookingActions:commonActions;
+ if(gtk_widget_get_parent(actionBox)!=destination){g_object_ref(actionBox);gtk_container_remove(GTK_CONTAINER(gtk_widget_get_parent(actionBox)),actionBox);gtk_box_pack_start(GTK_BOX(destination),actionBox,FALSE,FALSE,0);g_object_unref(actionBox);}
+ int faults=0;const cJSON *device;cJSON_ArrayForEach(device,model.devices)if(strcmp(lab_str(device,"status"),"available"))++faults;char availability[100];snprintf(availability,sizeof(availability),"%d / 40 台设备可预约\n\n故障设备  %d 台",40-faults,faults);gtk_label_set_text(GTK_LABEL(labStatus),availability);
  for(int i=0;i<15;i++){
  int id=actionIds[i],show=1;
  if(id==ID_BOOK||id==ID_SUGGEST)show=page==0;
  if(id==ID_ATTEND||id==ID_CANCEL)show=page==1||(page==0&&admin());
- if(id==ID_REPORT)show=page==2;
+ if(id==ID_REPORT)show=page==2||page==0;
  if(id==ID_REPAIR||id==ID_ARCHIVE)show=page==2&&admin();
  if(id==ID_DEACTIVATE||id==ID_INVITE||id==ID_METRICS)show=page==3&&admin();
- if(id==ID_AGENT)show=page==0||(page==3&&admin());
+ if(id==ID_PROFILE)show=page==1;
+ if(id==ID_AGENT)show=page==4||(page==3&&admin());
+ if(id==ID_UPDATE||id==ID_LOGOUT||id==ID_REFRESH)show=1;
  gtk_widget_set_visible(actions[i],show);
  }
- const char *date=gtk_entry_get_text(GTK_ENTRY(dateEdit));int start=8+gtk_combo_box_get_active(GTK_COMBO_BOX(startEdit)),end=9+gtk_combo_box_get_active(GTK_COMBO_BOX(endEdit));
+ const char *date=gtk_entry_get_text(GTK_ENTRY(dateEdit));int start=8+gtk_combo_box_get_active(GTK_COMBO_BOX(startEdit)),end=9+gtk_combo_box_get_active(GTK_COMBO_BOX(endEdit)),selectedCount=0;
+ char today[160],prefs[256],identityText[384];
+ ui_summary(&model,&client.session,date,today,sizeof(today),prefs,sizeof(prefs));
+ snprintf(identityText,sizeof(identityText),"%s  ·  %s  ·  %s",client.session.name,admin()?"管理员":"学生",client.session.login);
+ gtk_label_set_text(GTK_LABEL(sidebarIdentity),identityText);gtk_label_set_text(GTK_LABEL(profileName),identityText);gtk_label_set_text(GTK_LABEL(todayLabel),today);gtk_label_set_text(GTK_LABEL(preferenceLabel),prefs);
  for(int i=0;i<40;i++){
- int fault=0,occupied=0;const cJSON *r;
+ int fault=0,occupied=0,live=0;const cJSON *r;
  cJSON_ArrayForEach(r,model.devices)if(lab_int(r,"number")==i+1&&strcmp(lab_str(r,"status"),"available"))fault=1;
- cJSON_ArrayForEach(r,model.bookings)if(lab_int(r,"device_number")==i+1&&!strcmp(lab_str(r,"reservation_date"),date)&&lab_int(r,"start_hour")>=start&&lab_int(r,"start_hour")<end&&(!strcmp(lab_str(r,"status"),"reserved")||!strcmp(lab_str(r,"status"),"confirmed")||!strcmp(lab_str(r,"status"),"in_use")))occupied=1;
- char label[60];snprintf(label,sizeof(label),"%02d %s",i+1,fault?"故障":occupied?"占用":"空闲");gtk_button_set_label(GTK_BUTTON(deviceButtons[i]),label);
+ cJSON_ArrayForEach(r,model.bookings)if(lab_int(r,"device_number")==i+1){
+   if(!strcmp(lab_str(r,"status"),"in_use"))live=1;
+   if(!strcmp(lab_str(r,"reservation_date"),date)&&lab_int(r,"start_hour")>=start&&lab_int(r,"start_hour")<end&&(!strcmp(lab_str(r,"status"),"reserved")||!strcmp(lab_str(r,"status"),"confirmed")||!strcmp(lab_str(r,"status"),"in_use")))occupied=1;
  }
- cJSON *r; cJSON *source=page<2?model.bookings:page==2?model.issues:model.profiles;
+ char label[60];snprintf(label,sizeof(label),"%02d\n%s",i+1,fault?"! 故障":live?"使用中":occupied?"已预约":"* 空闲");gtk_button_set_label(GTK_BUTTON(deviceButtons[i]),label);
+ GtkStyleContext *style=gtk_widget_get_style_context(deviceButtons[i]);
+ const char *classes[]={"faulty","occupied","live"};for(int j=0;j<3;j++)gtk_style_context_remove_class(style,classes[j]);
+ if(fault)gtk_style_context_add_class(style,"faulty");else if(live)gtk_style_context_add_class(style,"live");else if(occupied)gtk_style_context_add_class(style,"occupied");
+ if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(deviceButtons[i])))++selectedCount;
+ }
+ char selection[96];snprintf(selection,sizeof(selection),selectedCount?"已选择 %d 台设备":"尚未选择设备",selectedCount);gtk_label_set_text(GTK_LABEL(selectionLabel),selection);
+ cJSON *r; cJSON *source=page<2?model.bookings:page==2?model.issues:page==3?model.profiles:NULL;
  cJSON_ArrayForEach(r,source){
  if(page==1&&strcmp(lab_str(r,"user_id"),client.session.uid))continue;
- if(page==0&&(!admin()||strcmp(lab_str(r,"reservation_date"),date)))continue;
+ if(page==0&&(strcmp(lab_str(r,"reservation_date"),date)||(!admin()&&strcmp(lab_str(r,"user_id"),client.session.uid))))continue;
+ if(page==2&&!admin()&&strcmp(lab_str(r,"reporter_id"),client.session.uid))continue;
  if(page==3&&!admin())continue;
  if(listedCount>=100000)break;
- char a[128],b[128],c[128];
- if(page<2){snprintf(a,sizeof(a),"设备 %02d",lab_int(r,"device_number"));snprintf(b,sizeof(b),"%s %02d:00",lab_str(r,"reservation_date"),lab_int(r,"start_hour"));snprintf(c,sizeof(c),"%s",lab_str(r,"status"));}
- else if(page==2){snprintf(a,sizeof(a),"设备 %02d",lab_int(r,"device_number"));snprintf(b,sizeof(b),"%s",lab_str(r,"description"));snprintf(c,sizeof(c),"%s",lab_str(r,"status"));}
+ char a[128],b[256],c[128],in[80]="",out[80]="",duration[80]="";
+ if(page<2){snprintf(a,sizeof(a),"#%02d",lab_int(r,"device_number"));snprintf(b,sizeof(b),"%s %02d:00–%02d:00",lab_str(r,"reservation_date"),lab_int(r,"start_hour"),lab_int(r,"start_hour")+1);snprintf(c,sizeof(c),"%s",ui_status(lab_str(r,"status")));const cJSON *u=ui_usage(&model,r);ui_time(lab_str(u,"checked_in_at"),in,sizeof(in));ui_time(lab_str(u,"checked_out_at"),out,sizeof(out));ui_duration(u,duration,sizeof(duration));}
+ else if(page==2){snprintf(a,sizeof(a),"#%02d",lab_int(r,"device_number"));snprintf(b,sizeof(b),"%s",lab_str(r,"description"));snprintf(c,sizeof(c),"%s",ui_status(lab_str(r,"status")));}
  else {snprintf(a,sizeof(a),"%s",lab_str(r,"display_name"));snprintf(b,sizeof(b),"%s",lab_str(r,"login_id"));snprintf(c,sizeof(c),"%s",lab_str(r,"role"));}
- GtkTreeIter it;gtk_list_store_append(rows,&it);gtk_list_store_set(rows,&it,0,a,1,b,2,c,3,listedCount,-1);listed[listedCount++]=r;
+ GtkTreeIter it;gtk_list_store_append(rows,&it);gtk_list_store_set(rows,&it,0,a,1,b,2,c,3,in,4,out,5,duration,6,listedCount,-1);listed[listedCount++]=r;
  }
 }
 static gboolean finish_job(gpointer arg){
  Job *j=arg;busy=0;
  if(j->kind==JOB_UPDATE){if(j->ok&&confirm(j->message))gtk_show_uri_on_window(GTK_WINDOW(window),"https://github.com/alexis-zhang0503/intelligent-lab-booking-system/releases/latest",GDK_CURRENT_TIME,NULL);}
- else {client=j->client;if(j->loaded){lab_model_free(&model);model=j->model;memset(&j->model,0,sizeof(j->model));logged=1;gtk_entry_set_text(GTK_ENTRY(password),"");gtk_entry_set_text(GTK_ENTRY(inviteEdit),"");}if(!*client.session.access){logged=0;lab_model_free(&model);}render();if(*j->message)tell(j->message);else if(j->ok&&j->kind!=JOB_REFRESH&&j->kind!=JOB_LOGIN)tell("操作成功，已同步云端。");}
+ else {client=j->client;if(j->loaded){lab_model_free(&model);model=j->model;memset(&j->model,0,sizeof(j->model));logged=1;gtk_entry_set_text(GTK_ENTRY(password),"");gtk_entry_set_text(GTK_ENTRY(inviteEdit),"");}if(!*client.session.access){logged=0;lab_model_free(&model);}render();if(*j->message){if(j->kind==JOB_AGENT)gtk_label_set_text(GTK_LABEL(agentReply),j->message);else tell(j->message);}else if(j->ok&&j->kind!=JOB_REFRESH&&j->kind!=JOB_LOGIN)tell("操作成功，已同步云端。");}
  gtk_widget_set_sensitive(authBox,TRUE);gtk_widget_set_sensitive(workBox,TRUE);
- gtk_label_set_text(GTK_LABEL(statusText),"原生 C 3.0.0 · 北京时间 · 每 30 秒刷新云端");
+ gtk_label_set_text(GTK_LABEL(statusText),"原生 C 3.1.0 · 北京时间 · 每 30 秒刷新云端");
  lab_model_free(&j->model);lab_session_clear(&j->client.session);cJSON_Delete(j->row);free(j);return G_SOURCE_REMOVE;
 }
 static void parameter(cJSON *p, const char *key, const char *s) { cJSON_AddStringToObject(p, key, s); }
@@ -297,7 +332,7 @@ post:
     return NULL;
 }
 static void command(GtkWidget *widget,gpointer data){
- (void)widget;int id=GPOINTER_TO_INT(data);if(busy)return;
+ (void)widget;int id=GPOINTER_TO_INT(data);if(busy||preview)return;
  if(id==ID_LOGOUT){lab_session_clear(&client.session);lab_model_free(&model);logged=0;render();return;}
  Job *j=calloc(1,sizeof(*j));if(!j)return;j->client=client;
  snprintf(j->date,sizeof(j->date),"%s",gtk_entry_get_text(GTK_ENTRY(dateEdit)));
@@ -305,7 +340,7 @@ static void command(GtkWidget *widget,gpointer data){
  j->start=8+gtk_combo_box_get_active(GTK_COMBO_BOX(startEdit));j->end=9+gtk_combo_box_get_active(GTK_COMBO_BOX(endEdit));
  for(int i=0;i<40;i++)if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(deviceButtons[i])))j->devices[j->count++]=i+1;
  GtkTreeIter it;GtkTreeModel *tm=NULL;int index=-1;
- if(gtk_tree_selection_get_selected(gtk_tree_view_get_selection(GTK_TREE_VIEW(list)),&tm,&it))gtk_tree_model_get(tm,&it,3,&index,-1);
+ if(gtk_tree_selection_get_selected(gtk_tree_view_get_selection(GTK_TREE_VIEW(list)),&tm,&it))gtk_tree_model_get(tm,&it,6,&index,-1);
  if(index>=0&&index<listedCount)j->row=cJSON_Duplicate(listed[index],1);
  switch(id){
  case ID_LOGIN:case ID_REGISTER:
@@ -320,16 +355,20 @@ static void command(GtkWidget *widget,gpointer data){
  case ID_BOOK:
   j->kind=JOB_BOOK;if(!j->count||j->start>=j->end){tell("请选择设备和有效时段。");goto abort_job;}
   for(int i=0;i<9;i++){char *uuid=g_uuid_string_random();snprintf(j->keys[i],64,"%s",uuid);g_free(uuid);}
-  if(!confirm("确认预约所选设备和时段？多小时逐时提交，若后续冲突会保留已成功的小时。"))goto abort_job;break;
+  if(!confirm("确认预约所选设备和时段？多小时逐时提交，若后续冲突会保留已成功的小时。"))goto abort_job;
+  break;
  case ID_ATTEND:case ID_CANCEL:case ID_REPAIR:case ID_ARCHIVE:case ID_DEACTIVATE:
   if(!j->row){tell("请先选择列表中的一条记录。");goto abort_job;}
   if(id==ID_ATTEND){j->kind=JOB_ATTEND;j->action=lab_attendance_action(j->row,now_ms());if(strcmp(lab_str(j->row,"user_id"),client.session.uid)||!j->action){tell("仅可对自己的预约在预约小时内签到，使用中可签退。请刷新核实。");goto abort_job;}}
   else j->kind=id==ID_CANCEL?JOB_CANCEL:id==ID_REPAIR?JOB_REPAIR:id==ID_ARCHIVE?JOB_ARCHIVE:JOB_DEACTIVATE;
-  if(!confirm(id==ID_ATTEND?(j->action==1?"确认签到所选预约？":"确认签退所选预约？"):"确认对所选记录执行此操作？"))goto abort_job;break;
- case ID_REPORT:j->kind=JOB_REPORT;if(!j->count){tell("请在设备预约页先选中故障设备。");goto abort_job;}if(!confirm("确认报告第一台所选设备故障？"))goto abort_job;break;
+  if(!confirm(id==ID_ATTEND?(j->action==1?"确认签到所选预约？":"确认签退所选预约？"):"确认对所选记录执行此操作？"))goto abort_job;
+  break;
+ case ID_REPORT:j->kind=JOB_REPORT;if(!j->count){tell("请在设备预约页先选中故障设备。");goto abort_job;}if(!confirm("确认报告第一台所选设备故障？"))goto abort_job;
+  break;
  case ID_INVITE:j->kind=JOB_INVITE;break;
  case ID_METRICS:j->kind=JOB_METRICS;break;
- case ID_PROFILE:j->kind=JOB_PROFILE;if(!confirm("确认按说明框内的 姓名|学号或邮箱 修改本人资料？"))goto abort_job;break;
+ case ID_PROFILE:j->kind=JOB_PROFILE;if(!confirm("确认按说明框内的 姓名|学号或邮箱 修改本人资料？"))goto abort_job;
+  break;
  case ID_SUGGEST:j->kind=JOB_SUGGEST;break;
  case ID_AGENT:j->kind=JOB_AGENT;j->action=page==3;break;
  default:goto abort_job;
@@ -342,31 +381,52 @@ static gboolean refresh_timer(gpointer data){(void)data;if(logged&&!busy)command
 static gboolean smoke_quit(gpointer data){(void)data;gtk_main_quit();return G_SOURCE_REMOVE;}
 static gboolean update_start(gpointer data){(void)data;command(NULL,GINT_TO_POINTER(ID_UPDATE));return G_SOURCE_REMOVE;}
 static void changed(GtkWidget *w,gpointer data){(void)w;(void)data;if(!busy)render();}
-static void change_page(GtkWidget *w,gpointer data){(void)data;int next=gtk_combo_box_get_active(GTK_COMBO_BOX(w));if(next==3&&!admin()){gtk_combo_box_set_active(GTK_COMBO_BOX(w),1);tell("账号管理需要管理员权限。");return;}page=next;render();}
+static void navigate(GtkWidget *w,gpointer data){(void)w;int next=GPOINTER_TO_INT(data);if(busy)return;if(next==3&&!admin())return;page=next;render();}
+static void choose_seat(GtkToggleButton *w,gpointer data){(void)w;(void)data;int n=0;for(int i=0;i<40;i++)if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(deviceButtons[i])))++n;char text[96];snprintf(text,sizeof(text),n?"已选择 %d 台设备":"尚未选择设备",n);gtk_label_set_text(GTK_LABEL(selectionLabel),text);}
 static GtkWidget *entry(GtkWidget *box,const char *placeholder,int secret){GtkWidget *e=gtk_entry_new();gtk_entry_set_placeholder_text(GTK_ENTRY(e),placeholder);gtk_entry_set_visibility(GTK_ENTRY(e),!secret);gtk_box_pack_start(GTK_BOX(box),e,FALSE,FALSE,3);return e;}
 static GtkWidget *button(GtkWidget *box,const char *title,int id){GtkWidget *b=gtk_button_new_with_label(title);gtk_box_pack_start(GTK_BOX(box),b,FALSE,FALSE,3);g_signal_connect(b,"clicked",G_CALLBACK(command),GINT_TO_POINTER(id));return b;}
 static gboolean close_window(GtkWidget *w,GdkEvent *e,gpointer data){(void)w;(void)e;(void)data;if(busy){tell("请求处理中，请等待完成后关闭。");return TRUE;}gtk_main_quit();return FALSE;}
+static GtkWidget *label(GtkWidget *box,const char *text,const char *klass){GtkWidget *w=gtk_label_new(text);gtk_label_set_xalign(GTK_LABEL(w),0);gtk_label_set_line_wrap(GTK_LABEL(w),TRUE);if(klass)gtk_style_context_add_class(gtk_widget_get_style_context(w),klass);gtk_box_pack_start(GTK_BOX(box),w,FALSE,TRUE,0);return w;}
+static GtkWidget *card(GtkWidget *box,const char *title){GtkWidget *w=gtk_box_new(GTK_ORIENTATION_VERTICAL,14);gtk_style_context_add_class(gtk_widget_get_style_context(w),"card");gtk_box_pack_start(GTK_BOX(box),w,FALSE,TRUE,0);if(title)label(w,title,"card-title");return w;}
 int main(int argc,char **argv){
  curl_global_init(CURL_GLOBAL_DEFAULT);gtk_init(&argc,&argv);client.transport=lab_mac_http;
- window=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(window),"实验室预约 · 原生 C macOS");gtk_window_set_default_size(GTK_WINDOW(window),1140,800);g_signal_connect(window,"delete-event",G_CALLBACK(close_window),NULL);
- GtkWidget *root=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);gtk_container_set_border_width(GTK_CONTAINER(root),24);gtk_container_add(GTK_CONTAINER(window),root);
- GtkWidget *title=gtk_label_new("实验室预约 · NJUPT");gtk_widget_set_halign(title,GTK_ALIGN_START);gtk_box_pack_start(GTK_BOX(root),title,FALSE,FALSE,4);
- authBox=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);gtk_box_pack_start(GTK_BOX(root),authBox,TRUE,TRUE,8);
- identity=entry(authBox,"学号 / 管理员邮箱",0);password=entry(authBox,"密码",1);nameEdit=entry(authBox,"姓名（注册）",0);inviteEdit=entry(authBox,"管理员邀请码（可选）",0);button(authBox,"登录",ID_LOGIN);button(authBox,"注册",ID_REGISTER);
- gtk_box_pack_start(GTK_BOX(authBox),gtk_label_new("使用与网页相同的账号；密码与令牌仅保留于进程内存。"),FALSE,FALSE,8);
- workBox=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);gtk_box_pack_start(GTK_BOX(root),workBox,TRUE,TRUE,0);
- GtkWidget *filters=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6);gtk_box_pack_start(GTK_BOX(workBox),filters,FALSE,FALSE,0);
- pageEdit=gtk_combo_box_text_new();const char *pages[]={"设备预约","我的预约","故障管理","账号管理"};for(int i=0;i<4;i++)gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(pageEdit),pages[i]);gtk_combo_box_set_active(GTK_COMBO_BOX(pageEdit),0);gtk_box_pack_start(GTK_BOX(filters),pageEdit,FALSE,FALSE,0);
- dateEdit=entry(filters,"日期 YYYY-MM-DD（北京时间）",0);GDateTime *now=g_date_time_new_now_utc(),*bj=g_date_time_add_hours(now,8);char *date=g_date_time_format(bj,"%Y-%m-%d");gtk_entry_set_text(GTK_ENTRY(dateEdit),date);g_free(date);g_date_time_unref(bj);g_date_time_unref(now);
- startEdit=gtk_combo_box_text_new();endEdit=gtk_combo_box_text_new();for(int i=0;i<9;i++){char t[32];snprintf(t,sizeof(t),"开始 %02d:00",i+8);gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(startEdit),t);snprintf(t,sizeof(t),"结束 %02d:00",i+9);gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(endEdit),t);}gtk_combo_box_set_active(GTK_COMBO_BOX(startEdit),0);gtk_combo_box_set_active(GTK_COMBO_BOX(endEdit),0);gtk_box_pack_start(GTK_BOX(filters),startEdit,FALSE,FALSE,0);gtk_box_pack_start(GTK_BOX(filters),endEdit,FALSE,FALSE,0);
- grid=gtk_grid_new();gtk_grid_set_row_spacing(GTK_GRID(grid),6);gtk_grid_set_column_spacing(GTK_GRID(grid),6);gtk_box_pack_start(GTK_BOX(workBox),grid,FALSE,FALSE,0);for(int i=0;i<40;i++){deviceButtons[i]=gtk_toggle_button_new_with_label("设备");gtk_widget_set_hexpand(deviceButtons[i],TRUE);gtk_grid_attach(GTK_GRID(grid),deviceButtons[i],i%10,i/10,1,1);}
- rows=gtk_list_store_new(4,G_TYPE_STRING,G_TYPE_STRING,G_TYPE_STRING,G_TYPE_INT);list=gtk_tree_view_new_with_model(GTK_TREE_MODEL(rows));const char *columns[]={"设备 / 姓名","预约时段 / 说明 / 账号","状态 / 角色"};for(int i=0;i<3;i++){GtkCellRenderer *cell=gtk_cell_renderer_text_new();GtkTreeViewColumn *col=gtk_tree_view_column_new_with_attributes(columns[i],cell,"text",i,NULL);gtk_tree_view_column_set_expand(col,TRUE);gtk_tree_view_append_column(GTK_TREE_VIEW(list),col);}GtkWidget *scroll=gtk_scrolled_window_new(NULL,NULL);gtk_container_add(GTK_CONTAINER(scroll),list);gtk_box_pack_start(GTK_BOX(workBox),scroll,TRUE,TRUE,0);
- noteEdit=entry(workBox,"故障 / 维修说明 / 智能分析问题；修改资料填写 姓名|学号或邮箱",0);
- actionBox=gtk_box_new(GTK_ORIENTATION_VERTICAL,4);gtk_box_pack_start(GTK_BOX(workBox),actionBox,FALSE,FALSE,0);for(int row=0;row<3;row++){GtkWidget *line=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,4);gtk_box_pack_start(GTK_BOX(actionBox),line,FALSE,FALSE,0);for(int col=0;col<5;col++){int i=row*5+col;actions[i]=button(line,actionNames[i],actionIds[i]);}}
- statusText=gtk_label_new("所有预约时段按北京时间计算。");gtk_box_pack_start(GTK_BOX(root),statusText,FALSE,FALSE,0);
- GtkCssProvider *css=gtk_css_provider_new();gtk_css_provider_load_from_data(css,"window { background: #f8f0e2; color: #43230f; } button { padding: 8px; } button:checked { background: #785332; color: white; }",-1,NULL);gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(css),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);g_object_unref(css);
- g_signal_connect(pageEdit,"changed",G_CALLBACK(change_page),NULL);g_signal_connect(dateEdit,"changed",G_CALLBACK(changed),NULL);g_signal_connect(startEdit,"changed",G_CALLBACK(changed),NULL);g_signal_connect(endEdit,"changed",G_CALLBACK(changed),NULL);
- gtk_widget_show_all(window);render();g_timeout_add_seconds(30,refresh_timer,NULL);g_idle_add(update_start,NULL);
+ const char *previewPage=NULL;for(int i=1;i<argc;i++)if(!strncmp(argv[i],"--preview=",10)){preview=1;previewPage=argv[i]+10;}
+ for(int i=1;i<argc;i++)if(!strncmp(argv[i],"--preview-output=",17))previewOutput=argv[i]+17;
+ window=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(window),"实验室预约 · NJUPT");gtk_window_set_default_size(GTK_WINDOW(window),1280,900);g_signal_connect(window,"delete-event",G_CALLBACK(close_window),NULL);
+ GtkWidget *root=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_container_add(GTK_CONTAINER(window),root);
+ authBox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,64);gtk_container_set_border_width(GTK_CONTAINER(authBox),64);gtk_box_pack_start(GTK_BOX(root),authBox,TRUE,TRUE,0);
+ GtkWidget *intro=gtk_box_new(GTK_ORIENTATION_VERTICAL,22);gtk_widget_set_valign(intro,GTK_ALIGN_CENTER);gtk_box_pack_start(GTK_BOX(authBox),intro,TRUE,TRUE,0);
+ label(intro,"NJUPT · 实验室预约","eyebrow");label(intro,"把时间留给探索","hero-title");label(intro,"选定设备，约好时间。\n设备、时段和你的记录，都在这里。","muted");
+ GtkWidget *login=card(authBox,"欢迎回来");gtk_widget_set_size_request(login,360,-1);gtk_widget_set_valign(login,GTK_ALIGN_CENTER);
+ identity=entry(login,"学号 / 管理员邮箱",0);password=entry(login,"密码",1);nameEdit=entry(login,"姓名（注册需要）",0);inviteEdit=entry(login,"管理员邀请码（可选）",0);GtkWidget *signIn=button(login,"登录并继续",ID_LOGIN);gtk_style_context_add_class(gtk_widget_get_style_context(signIn),"primary");button(login,"创建账号",ID_REGISTER);label(login,"使用与网页相同的云端账号","muted");
+ workBox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0);gtk_box_pack_start(GTK_BOX(root),workBox,TRUE,TRUE,0);
+ GtkWidget *sidebar=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);gtk_widget_set_size_request(sidebar,UI_SIDEBAR,-1);gtk_style_context_add_class(gtk_widget_get_style_context(sidebar),"sidebar");gtk_box_pack_start(GTK_BOX(workBox),sidebar,FALSE,FALSE,0);
+ GtkWidget *brand=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);gtk_box_pack_start(GTK_BOX(sidebar),brand,FALSE,FALSE,0);char logoPath[1024];snprintf(logoPath,sizeof(logoPath),"%s/njupt-lab-reservation-logo.png",g_getenv("LAB_RESOURCE_DIR")?g_getenv("LAB_RESOURCE_DIR"):"assets/brand");GdkPixbuf *logo=gdk_pixbuf_new_from_file_at_scale(logoPath,28,28,TRUE,NULL);if(logo){GtkWidget *icon=gtk_image_new_from_pixbuf(logo);gtk_box_pack_start(GTK_BOX(brand),icon,FALSE,FALSE,0);g_object_unref(logo);}label(brand,"NJUPT 实验室预约","brand");const int order[]={0,4,1,2,3};const char *names[]={"预约","我的","故障记录","用户管理","智能助手"};for(int k=0;k<5;k++){int i=order[k];nav[i]=gtk_button_new_with_label(names[i]);gtk_widget_set_halign(nav[i],GTK_ALIGN_FILL);gtk_style_context_add_class(gtk_widget_get_style_context(nav[i]),"nav");gtk_box_pack_start(GTK_BOX(sidebar),nav[i],FALSE,FALSE,0);g_signal_connect(nav[i],"clicked",G_CALLBACK(navigate),GINT_TO_POINTER(i));}
+ GtkWidget *spacer=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_box_pack_start(GTK_BOX(sidebar),spacer,TRUE,TRUE,0);sidebarIdentity=label(sidebar,"NJUPT · 云端预约","muted");sidebarActions=gtk_box_new(GTK_ORIENTATION_VERTICAL,6);gtk_box_pack_start(GTK_BOX(sidebar),sidebarActions,FALSE,FALSE,0);
+ GtkWidget *viewport=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(viewport),GTK_POLICY_AUTOMATIC,GTK_POLICY_AUTOMATIC);gtk_box_pack_start(GTK_BOX(workBox),viewport,TRUE,TRUE,0);
+ GtkWidget *content=gtk_box_new(GTK_ORIENTATION_VERTICAL,12);gtk_container_set_border_width(GTK_CONTAINER(content),32);gtk_container_add(GTK_CONTAINER(viewport),content);
+ label(content,"NJUPT · 实验室预约","eyebrow");heading=label(content,"实验室预约","page-title");subtitle=label(content,"把时间留给探索","muted");
+ bookingBox=gtk_box_new(GTK_ORIENTATION_VERTICAL,20);gtk_box_pack_start(GTK_BOX(content),bookingBox,FALSE,FALSE,0);
+ GtkWidget *hero=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,16);gtk_box_pack_start(GTK_BOX(bookingBox),hero,FALSE,FALSE,0);GtkWidget *heroText=label(hero,"把时间留给探索","hero-title");gtk_widget_set_hexpand(heroText,TRUE);GtkWidget *guide=card(hero,"预约流程 · 三步完成");gtk_widget_set_size_request(guide,292,-1);label(guide,"01 选择设备   02 设置时间\n03 确认预约","muted");
+ GtkWidget *booking=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,16);gtk_box_pack_start(GTK_BOX(bookingBox),booking,FALSE,FALSE,0);
+ GtkWidget *lab=gtk_box_new(GTK_ORIENTATION_VERTICAL,14);gtk_widget_set_hexpand(lab,TRUE);gtk_style_context_add_class(gtk_widget_get_style_context(lab),"card");gtk_box_pack_start(GTK_BOX(booking),lab,TRUE,TRUE,0);label(lab,"实验室平面图","card-title");label(lab,"点击空闲设备","muted");
+ filters=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6);gtk_box_pack_start(GTK_BOX(lab),filters,FALSE,FALSE,0);dateEdit=entry(filters,"预约日期 YYYY-MM-DD",0);GDateTime *now=g_date_time_new_now_utc(),*bj=g_date_time_add_hours(now,8);char *date=g_date_time_format(bj,"%Y-%m-%d");gtk_entry_set_text(GTK_ENTRY(dateEdit),date);g_free(date);g_date_time_unref(bj);g_date_time_unref(now);label(lab,"* 空闲    已预约    使用中    ! 故障    已选择","muted");
+ grid=gtk_grid_new();gtk_grid_set_row_spacing(GTK_GRID(grid),12);gtk_grid_set_column_spacing(GTK_GRID(grid),8);gtk_box_pack_start(GTK_BOX(lab),grid,FALSE,FALSE,0);GtkWidget *aisle=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_widget_set_size_request(aisle,24,-1);gtk_grid_attach(GTK_GRID(grid),aisle,4,0,1,5);for(int i=0;i<40;i++){deviceButtons[i]=gtk_toggle_button_new_with_label("设备");gtk_widget_set_hexpand(deviceButtons[i],TRUE);gtk_widget_set_size_request(deviceButtons[i],56,68);gtk_style_context_add_class(gtk_widget_get_style_context(deviceButtons[i]),"seat");gtk_grid_attach(GTK_GRID(grid),deviceButtons[i],i%UI_DEVICE_COLUMNS+(i%UI_DEVICE_COLUMNS>=4?1:0),i/UI_DEVICE_COLUMNS,1,1);g_signal_connect(deviceButtons[i],"toggled",G_CALLBACK(choose_seat),NULL);}
+ GtkWidget *railColumn=gtk_box_new(GTK_ORIENTATION_VERTICAL,16);gtk_box_pack_start(GTK_BOX(booking),railColumn,FALSE,FALSE,0);GtkWidget *rail=gtk_box_new(GTK_ORIENTATION_VERTICAL,14);gtk_widget_set_size_request(rail,292,-1);gtk_widget_set_valign(rail,GTK_ALIGN_START);gtk_style_context_add_class(gtk_widget_get_style_context(rail),"card");gtk_box_pack_start(GTK_BOX(railColumn),rail,FALSE,FALSE,0);label(rail,"预约时间","card-title");
+ startEdit=gtk_combo_box_text_new();endEdit=gtk_combo_box_text_new();for(int i=0;i<9;i++){char t[32];snprintf(t,sizeof(t),"开始 %02d:00",i+8);gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(startEdit),t);snprintf(t,sizeof(t),"结束 %02d:00",i+9);gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(endEdit),t);}gtk_combo_box_set_active(GTK_COMBO_BOX(startEdit),0);gtk_combo_box_set_active(GTK_COMBO_BOX(endEdit),0);GtkWidget *timeRow=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);gtk_box_pack_start(GTK_BOX(rail),timeRow,FALSE,FALSE,0);gtk_box_pack_start(GTK_BOX(timeRow),startEdit,TRUE,TRUE,0);label(timeRow,"至","muted");gtk_box_pack_start(GTK_BOX(timeRow),endEdit,TRUE,TRUE,0);selectionLabel=label(rail,"尚未选择设备","selection");bookingActions=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);gtk_box_pack_start(GTK_BOX(rail),bookingActions,FALSE,FALSE,0);
+ GtkWidget *stateCard=card(railColumn,"实验室状态");labStatus=label(stateCard,"","card-title");faultActions=gtk_box_new(GTK_ORIENTATION_VERTICAL,6);gtk_box_pack_start(GTK_BOX(railColumn),faultActions,FALSE,FALSE,0);
+ profileBox=gtk_box_new(GTK_ORIENTATION_VERTICAL,16);gtk_box_pack_start(GTK_BOX(content),profileBox,FALSE,FALSE,0);GtkWidget *profile=card(profileBox,NULL);profileName=label(profile,"","card-title");label(profile,"个人资料 · 使用与网页相同的账号","muted");GtkWidget *summary=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,16);gtk_box_pack_start(GTK_BOX(profileBox),summary,FALSE,FALSE,0);GtkWidget *today=card(summary,"今天的预约");gtk_widget_set_hexpand(today,TRUE);todayLabel=label(today,"","body");GtkWidget *pref=card(summary,"预约偏好");gtk_widget_set_hexpand(pref,TRUE);preferenceLabel=label(pref,"","muted");profileFault=gtk_button_new_with_label("我的故障记录");gtk_box_pack_start(GTK_BOX(profileBox),profileFault,FALSE,FALSE,0);g_signal_connect(profileFault,"clicked",G_CALLBACK(navigate),GINT_TO_POINTER(2));
+ agentBox=card(content,"智能助手");label(agentBox,"根据设备、日期和时段获取建议；确认后再预约。","muted");agentReply=label(agentBox,"告诉我你的预约需求。","body");gtk_widget_set_size_request(agentReply,-1,200);
+ commonActions=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);gtk_box_pack_start(GTK_BOX(content),commonActions,FALSE,FALSE,0);noteEdit=entry(commonActions,"故障 / 维修说明或智能助手问题；修改资料：姓名|学号或邮箱",0);
+ actionBox=gtk_box_new(GTK_ORIENTATION_VERTICAL,6);gtk_box_pack_start(GTK_BOX(commonActions),actionBox,FALSE,FALSE,0);for(int i=0;i<15;i++){actions[i]=button(actionIds[i]==ID_REFRESH||actionIds[i]==ID_LOGOUT||actionIds[i]==ID_UPDATE?sidebarActions:actionBox,actionNames[i],actionIds[i]);if(actionIds[i]==ID_BOOK||actionIds[i]==ID_AGENT)gtk_style_context_add_class(gtk_widget_get_style_context(actions[i]),"primary");}
+ tableBox=card(content,"预约与使用记录");label(tableBox,"选中预约后，可手动签到、签退或取消。实际时间按北京时间显示。","muted");rows=gtk_list_store_new(7,G_TYPE_STRING,G_TYPE_STRING,G_TYPE_STRING,G_TYPE_STRING,G_TYPE_STRING,G_TYPE_STRING,G_TYPE_INT);list=gtk_tree_view_new_with_model(GTK_TREE_MODEL(rows));const char *columns[]={"设备 / 姓名","预约时段 / 说明 / 账号","状态","实际签到","实际签退","实际使用"};for(int i=0;i<6;i++){GtkCellRenderer *cell=gtk_cell_renderer_text_new();GtkTreeViewColumn *col=gtk_tree_view_column_new_with_attributes(columns[i],cell,"text",i,NULL);gtk_tree_view_column_set_resizable(col,TRUE);gtk_tree_view_append_column(GTK_TREE_VIEW(list),col);}GtkWidget *scroll=gtk_scrolled_window_new(NULL,NULL);gtk_widget_set_size_request(scroll,-1,230);gtk_container_add(GTK_CONTAINER(scroll),list);gtk_box_pack_start(GTK_BOX(tableBox),scroll,TRUE,TRUE,0);
+ statusText=gtk_label_new("所有预约时段按北京时间计算。");gtk_box_pack_start(GTK_BOX(root),statusText,FALSE,FALSE,8);
+ GtkCssProvider *css=gtk_css_provider_new();gtk_css_provider_load_from_data(css,
+ "* { font-family: 'Noto Sans CJK SC', 'PingFang SC', sans-serif; font-size: 13px; color: " UI_INK "; } window { background: " UI_BG "; } .sidebar { padding:20px; background: white; border-right: 1px solid " UI_BORDER "; } .brand { font-size:16px; font-weight:700; margin-bottom:24px; } .card { padding:22px; background: " UI_SURFACE "; border:1px solid " UI_BORDER "; border-radius:16px; } .page-title { font-size:28px; font-weight:700; } .hero-title { font-size:30px; font-weight:700; } .card-title { font-size:16px; font-weight:700; } .eyebrow,.muted { color: " UI_MUTED "; } .eyebrow { font-size:11px; } button { background:white; border:1px solid " UI_BORDER "; border-radius:8px; padding:9px 12px; box-shadow:none; } button:hover { background:#f2f2ef; } .nav { border:0; background:transparent; min-height:28px; } .nav.active { background:#f2f2ef; border-left:3px solid " UI_ACCENT "; } .primary { background: " UI_ACCENT "; color:white; } .primary label { color:white; } entry,combobox button { background:white; border:1px solid " UI_BORDER "; border-radius:8px; padding:9px; } .selection { background: " UI_SOFT "; padding:12px; border-radius:8px; } .seat { background:#fcfcfb; padding:6px; } .seat:checked { background: " UI_SOFT "; border:2px solid " UI_ACCENT "; } .seat.faulty { background:#fcf0ef; border-color:#e9c2bf; } .seat.faulty label { color: " UI_DANGER "; } .seat.occupied { background:#f2f2ef; } .seat.live { background:#e8f6fa; } treeview { background:white; } treeview:selected { background:" UI_SOFT "; color:" UI_INK "; } header button { background:#fcfcfb; border-radius:0; }",-1,NULL);gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(css),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);g_object_unref(css);
+ g_signal_connect(dateEdit,"changed",G_CALLBACK(changed),NULL);g_signal_connect(startEdit,"changed",G_CALLBACK(changed),NULL);g_signal_connect(endEdit,"changed",G_CALLBACK(changed),NULL);
+ gtk_widget_show_all(root);
+ if(preview){ui_preview_model(&client,&model);logged=strcmp(previewPage,"login")!=0;page=!strcmp(previewPage,"profile")?1:!strcmp(previewPage,"agent")?4:0;gtk_label_set_text(GTK_LABEL(statusText),"界面预览 · 示例数据 · 未连接真实账号");}
+ render();gtk_widget_show(window);if(preview&&previewOutput)g_timeout_add(2000,preview_capture,NULL);if(!preview){g_timeout_add_seconds(30,refresh_timer,NULL);g_idle_add(update_start,NULL);}
  if(argc>1&&!strcmp(argv[1],"--smoke-test"))g_timeout_add_seconds(5,smoke_quit,NULL);
- gtk_main();lab_model_free(&model);lab_session_clear(&client.session);g_object_unref(rows);curl_global_cleanup();return 0;
+ gtk_main();lab_model_free(&model);lab_session_clear(&client.session);g_object_unref(rows);curl_global_cleanup();return previewFailed?2:0;
 }
