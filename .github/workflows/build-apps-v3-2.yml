@@ -5,6 +5,8 @@ on:
     paths: [.github/workflows/build-apps-v3-2.yml]
 permissions:
   contents: read
+env:
+  PYTHONUTF8: 1
 jobs:
   build:
     strategy:
