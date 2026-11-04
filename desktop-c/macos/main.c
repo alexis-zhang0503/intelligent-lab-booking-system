@@ -66,7 +66,12 @@ static GtkWidget *nav[5],*heading,*subtitle,*bookingBox,*filters,*profileBox,*pr
 static int preview;
 static const char *previewOutput;
 static int previewFailed;
-static gboolean preview_capture(gpointer unused){(void)unused;GdkWindow *w=gtk_widget_get_window(window);GdkPixbuf *image=gdk_pixbuf_get_from_window(w,0,0,gdk_window_get_width(w),gdk_window_get_height(w));GError *error=NULL;previewFailed=!image||!gdk_pixbuf_save(image,previewOutput,"png",&error,NULL);if(error){g_printerr("%s\n",error->message);g_error_free(error);}if(image)g_object_unref(image);gtk_main_quit();return G_SOURCE_REMOVE;}
+static gboolean preview_capture(gpointer unused){
+ (void)unused;int width=gtk_widget_get_allocated_width(window),height=gtk_widget_get_allocated_height(window);
+ cairo_surface_t *surface=cairo_image_surface_create(CAIRO_FORMAT_ARGB32,width,height);cairo_t *drawing=cairo_create(surface);
+ gtk_widget_draw(window,drawing);cairo_destroy(drawing);previewFailed=cairo_surface_write_to_png(surface,previewOutput)!=CAIRO_STATUS_SUCCESS;cairo_surface_destroy(surface);gtk_main_quit();return G_SOURCE_REMOVE;
+}
+
 static LabClient client;
 static LabModel model;
 static int busy,logged,page;
@@ -392,7 +397,7 @@ int main(int argc,char **argv){
  curl_global_init(CURL_GLOBAL_DEFAULT);gtk_init(&argc,&argv);client.transport=lab_mac_http;
  const char *previewPage=NULL;for(int i=1;i<argc;i++)if(!strncmp(argv[i],"--preview=",10)){preview=1;previewPage=argv[i]+10;}
  for(int i=1;i<argc;i++)if(!strncmp(argv[i],"--preview-output=",17))previewOutput=argv[i]+17;
- window=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(window),"实验室预约 · NJUPT");gtk_window_set_default_size(GTK_WINDOW(window),1280,900);g_signal_connect(window,"delete-event",G_CALLBACK(close_window),NULL);
+ window=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(window),"实验室预约 · NJUPT");gtk_window_set_default_size(GTK_WINDOW(window),1280,900);if(preview)gtk_widget_set_size_request(window,1280,900);g_signal_connect(window,"delete-event",G_CALLBACK(close_window),NULL);
  GtkWidget *root=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_container_add(GTK_CONTAINER(window),root);
  authBox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,64);gtk_container_set_border_width(GTK_CONTAINER(authBox),64);gtk_box_pack_start(GTK_BOX(root),authBox,TRUE,TRUE,0);
  GtkWidget *intro=gtk_box_new(GTK_ORIENTATION_VERTICAL,22);gtk_widget_set_valign(intro,GTK_ALIGN_CENTER);gtk_box_pack_start(GTK_BOX(authBox),intro,TRUE,TRUE,0);
