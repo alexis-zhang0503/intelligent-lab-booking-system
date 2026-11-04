@@ -1,0 +1,32 @@
+name: Upload original v3.2 source archive
+on:
+  push:
+    branches: [release-source-v3-2]
+    paths: ['.github/workflows/upload-source-v3-2.yml']
+permissions:
+  contents: write
+jobs:
+  source-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore original archive and verify bytes
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, pathlib, zipfile
+          parts=sorted(pathlib.Path('release-source-v3.2').glob('part-*.b64'))
+          assert len(parts)==6, 'Incomplete source archive'
+          data=base64.b64decode(''.join(p.read_text().strip() for p in parts), validate=True)
+          expected='8b6f405f5c9c4145b8727f5b90acbe5a00fa17e6eb4129f8f4070322a2066ea4'
+          assert hashlib.sha256(data).hexdigest()==expected, 'Archive checksum mismatch'
+          target=pathlib.Path('lab-booking-native-c-source-v3.2.0.zip')
+          target.write_bytes(data)
+          with zipfile.ZipFile(target) as archive:
+              assert archive.testzip() is None
+              assert 'project/desktop-c/src/native_ui.c' in archive.namelist()
+          pathlib.Path('SHA256SUMS-source-v3.2.0.txt').write_text(expected+'  '+target.name+'\n')
+          PY
+      - name: Upload source archive to current release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload v3.1.0 lab-booking-native-c-source-v3.2.0.zip SHA256SUMS-source-v3.2.0.txt --repo "$GITHUB_REPOSITORY" --clobber
