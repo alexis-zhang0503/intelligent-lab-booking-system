@@ -14,6 +14,7 @@ cat > "$app/Contents/MacOS/LabReservation" <<'LAUNCH'
 base="$(cd "$(dirname "$0")/.." && pwd)"
 export GSETTINGS_SCHEMA_DIR="$base/Resources/glib-2.0/schemas"
 export GTK_DATA_PREFIX="$base/Resources"
+export LAB_RESOURCE_DIR="$base/Resources"
 export GTK_THEME=Adwaita
 export GDK_BACKEND=quartz
 exec "$base/MacOS/lab-native" "$@"
@@ -22,6 +23,7 @@ chmod +x "$app/Contents/MacOS/LabReservation"
 mkdir -p "$app/Contents/Resources/glib-2.0/schemas"
 cp "$(brew --prefix gtk+3)/share/glib-2.0/schemas/"*.xml "$app/Contents/Resources/glib-2.0/schemas/"
 glib-compile-schemas "$app/Contents/Resources/glib-2.0/schemas"
+cp assets/brand/njupt-lab-reservation-logo.png "$app/Contents/Resources/"
 mkdir -p /tmp/lab.iconset
 for size in 16 32 128 256 512; do
  sips -z "$size" "$size" assets/brand/njupt-lab-reservation-logo.png --out "/tmp/lab.iconset/icon_${size}x${size}.png" >/dev/null
@@ -36,8 +38,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>cn.njupt.labreservation</string>
 <key>CFBundleName</key><string>LabReservation</string>
 <key>CFBundleDisplayName</key><string>实验室预约</string>
-<key>CFBundleVersion</key><string>3.0.0</string>
-<key>CFBundleShortVersionString</key><string>3.0.0</string>
+<key>CFBundleVersion</key><string>3.1.0</string>
+<key>CFBundleShortVersionString</key><string>3.1.0</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>lab.icns</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>

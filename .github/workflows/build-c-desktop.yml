@@ -30,6 +30,20 @@ jobs:
           } finally {
             if (-not $app.HasExited) { Stop-Process -Id $app.Id }
           }
+      - name: Capture native UI fixtures
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force desktop-c/previews | Out-Null
+          foreach ($page in @('login', 'booking', 'profile', 'agent')) {
+            $output = Join-Path $pwd "desktop-c/previews/windows-$page.bmp"
+            $app = Start-Process desktop-c/dist/LabReservation.exe -ArgumentList "--preview=$page", "--preview-output=$output" -PassThru
+            if (-not $app.WaitForExit(15000)) { $app.Kill(); throw "Preview timeout: $page" }
+            if ($app.ExitCode -ne 0 -or -not (Test-Path $output)) { throw "Preview failed: $page" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-ui-windows
+          path: desktop-c/previews/
       - uses: actions/upload-artifact@v4
         with:
           name: NJUPT-Lab-C-Desktop-Windows-x64

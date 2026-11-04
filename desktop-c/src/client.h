@@ -3,7 +3,7 @@
 #include "../vendor/cJSON.h"
 #include <stddef.h>
 #include <stdint.h>
-#define LAB_NATIVE_VERSION "3.0.0"
+#define LAB_NATIVE_VERSION "3.1.0"
 #define LAB_API_HOST "ikfqcappastopzjbncea.supabase.co"
 #define LAB_PUBLIC_KEY "sb_publishable_5Q5xIYHsAeEfO195kJ7jNg_Z5uBwxkV"
 #define LAB_SITE_HOST "alexis-zhang0503.github.io"
