@@ -7,3 +7,7 @@
 .auth-brand .auth-brand-logo { width: 56px; height: 56px; object-fit: contain; border-radius: 10px; }
 .logo img { width: 36px; height: 36px; object-fit: contain; border-radius: 7px; }
 .entry-core img, .site-entry-core img { object-fit: contain; filter: none; border-radius: 6px; }
+
+.update-notice{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:16px;padding:12px 18px;background:#fff8ed;color:#43240f;border:1px solid #d7c4aa;border-radius:12px;box-shadow:0 6px 24px #0002;max-width:calc(100vw - 32px)}
+.update-notice[hidden]{display:none}
+.update-notice button{cursor:pointer;white-space:nowrap;border:0;border-radius:8px;padding:8px 14px;background:#43240f;color:#fff8ed}

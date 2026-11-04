@@ -1,0 +1,50 @@
+name: Build native C desktop
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-c:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build pure C Windows desktop
+        shell: pwsh
+        run: ./desktop-c/build.ps1
+      - name: Verify Windows application startup
+        shell: pwsh
+        run: |
+          $app = Start-Process desktop-c/dist/LabReservation.exe -PassThru
+          try {
+            Start-Sleep -Seconds 6
+            $app.Refresh()
+            if ($app.HasExited) { throw 'Desktop exited during startup.' }
+            if (-not $app.MainWindowHandle) { throw 'Desktop window was not created.' }
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id }
+          }
+      - name: Capture native UI fixtures
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force desktop-c/previews | Out-Null
+          foreach ($page in @('login', 'booking', 'profile', 'agent')) {
+            $output = Join-Path $pwd "desktop-c/previews/windows-$page.bmp"
+            $app = Start-Process desktop-c/dist/LabReservation.exe -ArgumentList "--preview=$page", "--preview-output=$output" -PassThru
+            if (-not $app.WaitForExit(15000)) { $app.Kill(); throw "Preview timeout: $page" }
+            if ($app.ExitCode -ne 0 -or -not (Test-Path $output)) { throw "Preview failed: $page" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-ui-windows
+          path: desktop-c/previews/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NJUPT-Lab-C-Desktop-Windows-x64
+          path: desktop-c/dist/

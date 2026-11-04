@@ -1,0 +1,45 @@
+name: Publish native C release assets
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build and test native C client
+        shell: pwsh
+        run: ./desktop-c/build.ps1
+      - name: Verify native application startup
+        shell: pwsh
+        run: |
+          $app = Start-Process desktop-c/dist/LabReservation.exe -PassThru
+          try {
+            Start-Sleep -Seconds 6
+            $app.Refresh()
+            if ($app.HasExited) { throw 'Native desktop exited during startup.' }
+            if (-not $app.MainWindowHandle) { throw 'Native desktop window was not created.' }
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id }
+          }
+      - name: Package and checksum Windows download
+        shell: pwsh
+        run: |
+          Compress-Archive -Path desktop-c/dist/* -DestinationPath LabReservation-Windows-x64.zip
+          $hash = (Get-FileHash LabReservation-Windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  LabReservation-Windows-x64.zip" | Set-Content -Encoding ascii SHA256SUMS.txt
+      - name: Attach verified assets to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$env:RELEASE_TAG" LabReservation-Windows-x64.zip SHA256SUMS.txt --repo "$env:GITHUB_REPOSITORY"

@@ -1,5 +1,8 @@
 # 智能实验室预约系统
 
+当前桌面端入口为 `desktop-c/`：C11 + Win32 原生界面 + WinHTTP，直接调用与网页相同的云端接口，无 HTML/WebView。旧 `qt-client/` 仅保留作历史离线演示。
+
+
 包含 GitHub Pages Web 客户端与 Windows Qt/C++ 客户端的课程作业项目。
 
 ## 功能
@@ -42,3 +45,9 @@ Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`
 ## 签到修复
 
 网页签到时间、异常提示和 Qt 本地签到实现已更新，部署所需的数据库步骤及验证范围见 [签到修复与上传说明](docs/attendance-fix.md)。只推送前端文件不会更新 Supabase 函数，必须按说明执行增量迁移。
+
+## 推荐桌面客户端：纯 C，共享网页界面
+
+[desktop-c](desktop-c/README.md) 使用 C11、Win32 原生控件和 WinHTTP；桌面 UI 与业务逻辑不依赖网页代码。账号和数据共用云端，登录后每 30 秒刷新；原生 UI 变化需发布新的 EXE，启动时检查版本并提示下载。`qt-client` 仅保留历史离线演示。
+
+上传和静态托管步骤见 [原生 C 部署说明](docs/c-desktop-native.md)。

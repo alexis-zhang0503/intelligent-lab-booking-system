@@ -34,3 +34,5 @@ Select a reservation to enable the applicable action. Attendance timestamps surv
 check-in is allowed only during the booked hour in Asia/Shanghai. This remains a local demo,
 with no automatic synchronization to the web client's Supabase records.
 See `../docs/attendance-fix.md` for build instructions and validation limits.
+
+> 此目录现保留为历史离线演示。要求与网页 UI、账号和签到完全一致时，请使用 `../desktop-c/` 的 C11 Windows 共享网页客户端。不要继续分发本目录的旧 EXE 来验证网页同步。
