@@ -18,6 +18,13 @@ These tests require an isolated Supabase staging project populated with two stud
 | Fault isolation | Confirm isolation for an unresolved issue. | Device becomes `faulty`, issue becomes `faulty`, one `isolated` audit event is written, and affected reservations remain intact. |
 | Fault repair | Submit a valid repair note after isolation. | Issue becomes `resolved`, device returns to `available`, and one `repaired` audit event is written. |
 | Fault response RLS | Call all V2.1 fault RPCs as a student. | Calls fail with administrator access errors; direct event reads return no rows. |
+| V3 50-minute use | Create a 60-minute reservation with check-in at +5 min and check-out at +55 min. | `actual_used_minutes` increases by 50, never 60. |
+| V3 short use and no-show | Create one 10-minute complete record and one no-show reservation. | Actual use increases by 10 only; no-show contributes to booked minutes and no-show rate. |
+| V3 incomplete and provisional attendance | Create an in-use reservation with check-in but no check-out. | It is counted in `checked_in_missing_checkout_count`; any displayed provisional minutes do not change `actual_usage_rate`. |
+| V3 boundary and adjacent slots | Seed attendance before a slot and after its end, plus two adjacent completed reservations. | Each record is clipped to its own slot; no adjacent-slot minute is duplicated. |
+| V3 maintenance union | Add overlapping device and whole-lab maintenance windows covering the same slot. | Capacity loses 60 device-minutes once, not once per maintenance row. |
+| V3 historical capacity | Query dates before the V3 baseline. | `capacity_data_complete=false`; all capacity-derived rates are null and the limitation is returned. |
+| V3 metrics RLS | Call `v3_admin_usage_metrics` with a student JWT. | The call fails with an administrator access error. |
 
 ## Local checks completed in this worktree
 

@@ -51,3 +51,12 @@ New reservations are directly `confirmed`; there is no approval queue or tempora
 ## Production boundary
 
 This audit and migration are source artifacts only. Applying the migration, deploying an Edge Function, setting `DEEPSEEK_API_KEY`, or changing Supabase/Auth settings are production operations and require separate user confirmation.
+
+## V3.0 follow-up: usage-metric correction
+
+The original V2 metric function counts reservations with a check-in timestamp,
+not checked-in duration, and uses current `devices.status` for every requested
+date. `v3-0-usage-metrics-migration.sql` leaves that compatibility function
+unchanged and adds a device-minute API with a post-migration status-history
+baseline. It deliberately returns incomplete historical capacity as unknown
+rather than reconstructing it from current device state.

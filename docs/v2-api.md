@@ -12,6 +12,7 @@ All database RPCs require a Supabase authenticated JWT. Every write is executed 
 | `v2_refresh_expired_reservations` | none | Administrator only; marks expired unstarted rows as `no_show`. |
 | `v2_schedule_candidates` | date, preferred hour, required device count, preferred devices | Read-only Top-3 legal candidates filtered by opening rules, maintenance, status, and active booking conflicts. |
 | `v2_admin_metrics` | start date, end date | Administrator-only JSON metrics. |
+| `v3_admin_usage_metrics` | start date, end date, optional device number | Administrator-only device-minute metrics. It returns final actual use only from complete check-in/out pairs, separately labelled provisional use, capacity-history completeness, device ranking, and hour trends. Rates are `null` when historical capacity is unknown. |
 | `v2_log_agent_interaction` | request UUID, type, request/response JSON, outcome | Writes an auditable Agent event through a controlled RPC. |
 | `v2_fault_impact_analysis` | issue UUID | Administrator-only read model: future active reservations on the affected device and up to three legal same-slot replacement devices per reservation. It never changes a reservation. |
 | `v2_isolate_fault` | issue UUID, isolation note | Administrator-only confirmed action: marks the device faulty, changes the unresolved issue to `faulty`, and appends one fault-response audit event. Existing reservations remain unchanged. |
