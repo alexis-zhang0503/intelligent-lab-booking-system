@@ -1,0 +1,55 @@
+name: Build macOS native C release
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop-c/macos/**'
+      - '.github/workflows/release-macos.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: brew install gtk+3 pkg-config dylibbundler
+      - name: Build app and run C tests
+        run: bash desktop-c/macos/build.sh
+      - name: Verify relocated app startup
+        run: |
+          mv desktop-c/dist/LabReservation.app /tmp/LabReservation.app
+          /tmp/LabReservation.app/Contents/MacOS/LabReservation --smoke-test &
+          pid=$!
+          sleep 3
+          kill -0 "$pid"
+          wait "$pid"
+          mv /tmp/LabReservation.app desktop-c/dist/LabReservation.app
+      - name: Package app
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent desktop-c/dist/LabReservation.app "LabReservation-macOS-$ARCH.zip"
+          shasum -a 256 "LabReservation-macOS-$ARCH.zip" > "SHA256SUMS-macOS-$ARCH.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LabReservation-macOS-${{ matrix.arch }}
+          path: |
+            LabReservation-macOS-*.zip
+            SHA256SUMS-macOS-*.txt
+      - name: Attach to existing v3.0.0 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCH: ${{ matrix.arch }}
+        run: gh release upload v3.0.0 "LabReservation-macOS-$ARCH.zip" "SHA256SUMS-macOS-$ARCH.txt" --repo "$GITHUB_REPOSITORY" --clobber
