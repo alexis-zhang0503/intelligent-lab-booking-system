@@ -49,6 +49,35 @@ jobs:
           & ./package/project/desktop-c/build.ps1 -Toolchain '${{ steps.msys.outputs.msys2-location }}/ucrt64'
           if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
           Compress-Archive -Path package/project/desktop-c/dist/* -DestinationPath deliverables/LabReservation-Windows-x64-v3.2.0.zip
+          $iss = @'
+          [Setup]
+          AppId=LabReservation
+          AppName=LabReservation
+          AppVersion=3.2.0
+          DefaultDirName={localappdata}\Programs\LabReservation
+          DefaultGroupName=LabReservation
+          PrivilegesRequired=lowest
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+          OutputBaseFilename=LabReservation-Windows-x64-v3.2.0-Setup
+          Compression=lzma2
+          SolidCompression=yes
+          [Files]
+          Source: "package\project\desktop-c\dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+          [Icons]
+          Name: "{group}\LabReservation"; Filename: "{app}\LabReservation.exe"
+          Name: "{autodesktop}\LabReservation"; Filename: "{app}\LabReservation.exe"
+          [Run]
+          Filename: "{app}\LabReservation.exe"; Description: "Launch LabReservation"; Flags: nowait postinstall skipifsilent
+          '@
+          Set-Content installer.iss $iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Odeliverables installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          $setup = Start-Process ./deliverables/LabReservation-Windows-x64-v3.2.0-Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$env:RUNNER_TEMP\LabReservation-installed" -PassThru -Wait
+          if ($setup.ExitCode -ne 0) { throw 'Installer verification failed' }
+          $installed = Start-Process "$env:RUNNER_TEMP\LabReservation-installed\LabReservation.exe" -ArgumentList '--self-test' -PassThru
+          if (-not $installed.WaitForExit(30000)) { $installed.Kill(); throw 'Installed application timed out' }
+          if ($installed.ExitCode -ne 0) { throw 'Installed application failed' }
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
         run: brew install gtk+3 dylibbundler pkg-config
@@ -84,6 +113,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd deliverables
+          test -s LabReservation-Windows-x64-v3.2.0-Setup.exe
           test -s LabReservation-Windows-x64-v3.2.0.zip
           test -s LabReservation-macOS-arm64-v3.2.0.dmg
           test -s LabReservation-macOS-x64-v3.2.0.dmg
