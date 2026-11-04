@@ -28,12 +28,13 @@ Object.assign(EN,{"故障现象或原因（选填）":"Fault symptom or cause (o
 Object.assign(EN,{"总览":"Overview","设备管理中心":"Device management","在这里管理设备状态、学生预约与故障记录":"Manage device status, student reservations and issue records here","查看预约管理":"View reservations","查看故障维护":"View maintenance"});
 Object.assign(EN,{"请选择 1、7 或 30 天有效期。":"Choose a validity of 1, 7 or 30 days.","邀请码生成结果异常，请重试。":"The invitation response was invalid. Please try again.","生成中…":"Generating…","已生成，请先保存当前邀请码。":"Invitation generated. Save this code before continuing.","复制失败，请手动复制邀请码。":"Copy failed. Please copy the invitation manually.","请先生成邀请码。":"Generate an invitation first.","邀请码已生成，请及时保存。":"Invitation generated. Save it now.","生成新邀请码":"Generate another invitation","生成新的邀请码前，请确认已保存当前邀请码。是否继续？":"Have you saved the current invitation? Generate another one?","到期时间":"Expires at"});
 let inviteGenerationPending=false;
+let bookingSubmitting=false,bookingHourKeys=new Map();
 Object.assign(EN,{"展开记录":"Expand records","收起记录":"Collapse records","条记录":"records"});
 let adminModuleOpen={reservations:false,faults:false};
 const ZH=Object.fromEntries(Object.entries(EN).map(([zh,en])=>[en,zh]));
 let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9, bookingRequestKey=null, scheduleCandidates=[], adminMetrics=null, agentResponse=null, faultImpactPlan=null, faultResponseMetrics=null;
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
-function today(n=0){let d=new Date();d.setDate(d.getDate()+n);return d.toLocaleDateString("en-CA")}
+function today(n=0){return new Date(Date.now()+n*86400000).toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"})}
 function user(){return db.users.find(x=>x.id===db.session)} function admin(){return user()?.role==="admin"}
 function id(p){return p+"-"+Date.now()+"-"+Math.random().toString(16).slice(2)}
 function esc(x){return String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
@@ -44,8 +45,8 @@ function slotStart(value){return hourToMinutes(value)}
 function clockAt(minutes){return String(Math.floor(minutes/60)).padStart(2,"0")+":"+String(minutes%60).padStart(2,"0")}
 /** Formats one assignment-defined booking slot. */
 function fh(slot){return hourlyRange(slot)}
-/** Formats the currently selected one-hour interval. */
-function timeRange(){return hourlyRange(startHour)}
+/** Formats the complete selected interval. */
+function timeRange(){return `${clockAt(startHour*60)}–${clockAt(endHour*60)}`}
 /** Counts only finished, non-cancelled reservations toward accumulated experiment time. */
 function durationMinutes(list){return list.reduce((sum,booking)=>sum+(booking.status!=="cancelled"&&bookingEnd(booking)<=Date.now()?60:0),0)}
 function durationLabel(list){let hours=durationMinutes(list)/60;return `${Number.isInteger(hours)?hours:hours.toFixed(1)}h`}
@@ -68,11 +69,13 @@ function faultyDeviceCount(){return DESKS.filter(n=>fault(n)).length}
 function at(n,d=date){return db.bookings.filter(x=>x.deskNo===n&&x.date===d)}
 /** Returns the single hourly value occupied by this reservation. */
 function bookingSlots(booking){return [+booking.hour]}
+/** Attendance is separate from availability for the selected booking interval. */
+function deviceInUse(n,now=Date.now()){return date===today()&&db.bookings.some(x=>x.deskNo===n&&x.date===date&&x.status==="in_use"&&!x.usage?.checked_out_at&&reservationStart(x)<=now&&now<bookingEnd(x))}
 function conflict(n){let active=new Set(["reserved","confirmed","in_use","completed"]);return [...hours].some(slot=>db.bookings.some(x=>x.deskNo===n&&x.date===date&&bookingSlots(x).includes(slot)&&active.has(x.status)))}
 /** Calculates the first bookable full hour for the selected date. */
-function bookingWindow(){let now=new Date(),sameDay=date===today(),nextStart=sameDay?Math.max(8,now.getHours()+(now.getMinutes()||now.getSeconds()?1:0)):8,closed=nextStart>16;return {sameDay,nextStart,closed,valid:!closed&&startHour>=nextStart&&startHour<=16&&endHour===startHour+1,now}}
-/** Keeps the UI state constrained to one whole assignment-defined hour. */
-function syncBookingRange(){let state=bookingWindow();if(state.closed){hours.clear();return state}if(startHour<state.nextStart||startHour>16)startHour=state.nextStart;endHour=startHour+1;hours=new Set([startHour]);return bookingWindow()}
+function bookingWindow(){let now=new Date(),parts=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Shanghai",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(now).filter(x=>x.type!=="literal").map(x=>[x.type,Number(x.value)])),sameDay=date===today(),nextStart=sameDay?Math.max(8,parts.hour+(parts.minute||parts.second||now.getMilliseconds()?1:0)):8,closed=nextStart>16;return {sameDay,nextStart,closed,valid:date>=today()&&!closed&&startHour>=nextStart&&startHour<=16&&Number.isInteger(startHour)&&Number.isInteger(endHour)&&endHour>=startHour+1&&endHour<=17,now}}
+/** Keeps a continuous range of whole-hour slots within laboratory opening hours. */
+function syncBookingRange(){let state=bookingWindow();if(state.closed){hours.clear();return state}if(startHour<state.nextStart||startHour>16)startHour=state.nextStart;if(!Number.isInteger(endHour)||endHour<=startHour||endHour>17)endHour=startHour+1;hours=new Set(Array.from({length:endHour-startHour},(_,i)=>startHour+i));return bookingWindow()}
 function liveClock(d=new Date()){return new Intl.DateTimeFormat(language==="en"?"en-US":"zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false}).format(d)}
 function scheduleLiveTimeCheck(){clearTimeout(scheduleLiveTimeCheck.timer);if(admin()||page!=="dashboard"||date!==today())return;let delay=60000-Date.now()%60000+80;scheduleLiveTimeCheck.timer=setTimeout(()=>{if(document.body.classList.contains("booking-success")){scheduleLiveTimeCheck();return}dashStudent()},delay)}
 function render(keepAuth=false){if(admin()){if(page==="reports")page="dashboard";if(["reservations","faults"].includes(page))page="lab"}else if(["reports","faults"].includes(page))page="me";refreshBookingStates();if(!user()){q("#auth").hidden=false;q("#app").hidden=true;syncLanguage();return}q("#auth").hidden=!keepAuth;q("#app").hidden=false;q("#profile").innerHTML=`<div class="avatar">${esc(user().name[0])}</div><div><b>${esc(user().name)}</b><span>${tr(admin()?"管理员":"学生")} · ${esc(user().loginId)}</span></div>`;nav();({dashboard:admin()?dashAdmin:dashStudent,lab,users,reports,faults,me,reservations:adminReservations,assistant:agentPage})[page]?.();let content=q("#content");content.classList.remove("page-enter");void content.offsetWidth;content.classList.add("page-enter");syncLanguage();scheduleStatusRefresh()}
@@ -83,22 +86,22 @@ function nav(){let list=admin()?[["dashboard","01","总览"],["lab","02","设备
 function head(k,t){document.body.dataset.role=admin()?"admin":"student";q("#kicker").textContent=tr(admin()?"NJUPT · 实验室管理":"NJUPT · 实验室预约");q("#title").textContent=tr(t)}
 function stats(a){return `<div class="stats">${a.map(x=>`<article class="stat"><span>${tr(x[0])}</span><b class="${x[2]||""}">${x[1]}</b></article>`).join("")}</div>`}
 /** Renders forty devices with explicit available (*), reserved (#), and faulty (!) symbols. */
-function map(mode){let groups=Array.from({length:20},(_,i)=>[i*2+1,i*2+2]);return `<div class="lab">${groups.map(g=>`<div class="group">${g.map(n=>{let f=fault(n),c=conflict(n),blocked=mode==="student"&&(f||c),s=desks.has(n)&&!blocked,cl=["desk",blocked?"unavailable":"",f?"faulty":"",!f&&c?"occupied":"",s?"selected":""].filter(Boolean).join(" "),status=f?"故障":c?"已预约":s?"已选择":"空闲",symbol=f?"!":c?"#":s?"●":"*",label=language==="en"?`Device ${n}, ${tr(status)}`:`${n}号设备，${status}`;return `<button class="${cl}" data-desk="${n}" aria-label="${label}" ${blocked?"disabled":""}><b>${String(n).padStart(2,"0")}</b><i aria-hidden="true">${symbol}</i></button>`}).join("")}</div>`).join("")}</div>`}
-/** Renders the fixed nine one-hour choices from 08:00 through 17:00. */
-function timePick(){let state=bookingWindow(),isEn=language==="en",label=isEn?"Reservation time":"预约时间";if(state.closed)return `<div class="time-picker"><h3>${label}</h3><div class="time-check blocked"><div><b>${isEn?"Booking unavailable today":"今日无法预约"}</b><span>${isEn?"Choose another date to continue":"请选择其他日期继续预约"}</span></div></div></div>`;return `<div class="time-picker"><h3>${label}</h3><div class="time-range"><label><span>${isEn?"Start":"开始"}</span><select id="startTime">${SLOTS.map(slot=>`<option value="${slot}" ${slot===startHour?"selected":""} ${slot<state.nextStart?"disabled":""}>${hourlyRange(slot)}</option>`).join("")}</select></label><i>${isEn?"to":"至"}</i><label><span>${isEn?"End":"结束"}</span><select id="endTime" disabled><option>${hourlyRange(startHour)}</option></select></label></div></div>`}
+function map(mode){let groups=Array.from({length:20},(_,i)=>[i*2+1,i*2+2]);return `<div class="lab">${groups.map(g=>`<div class="group">${g.map(n=>{let f=fault(n),c=conflict(n),u=deviceInUse(n),blocked=mode==="student"&&(f||c),s=desks.has(n)&&!blocked,cl=["desk",blocked?"unavailable":"",f?"faulty":"",!f&&c?"occupied":"",!f&&u?"in-use":"",s?"selected":""].filter(Boolean).join(" "),status=f?"故障":u?"使用中":c?"已预约":s?"已选择":"空闲",symbol=f?"!":u?tr("使用中"):c?"#":s?"●":"*",label=language==="en"?`Device ${n}, ${tr(status)}${s?", selected":""}`:`${n}号设备，${status}${s&&u?"，已选择":""}`;return `<button class="${cl}" data-desk="${n}" aria-label="${label}" ${blocked?"disabled":""}><b>${String(n).padStart(2,"0")}</b><i aria-hidden="true">${symbol}</i></button>`}).join("")}</div>`).join("")}</div>`}
+/** Select a start point and an end point at least one hour later. */
+function timePick(){let state=bookingWindow(),isEn=language==="en",label=isEn?"Reservation time":"预约时间";if(state.closed)return `<div class="time-picker"><h3>${label}</h3><div class="time-check blocked"><div><b>${isEn?"Booking unavailable today":"今日无法预约"}</b><span>${isEn?"Choose another date to continue":"请选择其他日期继续预约"}</span></div></div></div>`;return `<div class="time-picker"><h3>${label}</h3><div class="time-range"><label><span>${isEn?"Start":"开始"}</span><select id="startTime">${SLOTS.map(slot=>`<option value="${slot}" ${slot===startHour?"selected":""} ${slot<state.nextStart?"disabled":""}>${clockAt(slot*60)}</option>`).join("")}</select></label><i>${isEn?"to":"至"}</i><label><span>${isEn?"End":"结束"}</span><select id="endTime">${Array.from({length:17-startHour},(_,i)=>startHour+i+1).map(slot=>`<option value="${slot}" ${slot===endHour?"selected":""}>${clockAt(slot*60)}</option>`).join("")}</select></label></div></div>`}
 function selection(){let ds=[...desks].sort((a,b)=>a-b);return ds.length?`${ds.map(deviceLabel).join(" ")} · ${timeRange()}`:tr("尚未选择设备")}
 function pruneSelections(){for(let n of desks)if(fault(n)||conflict(n))desks.delete(n)}
 /** Renders the student flow, including a legend that never hides fault status. */
-function dashStudent(){syncBookingRange();pruneSelections();head("STUDENT / RESERVATION","实验室预约");let mine=db.bookings.filter(x=>x.userId===user().id),available=DESKS.filter(n=>!fault(n)&&!conflict(n)).length,faulty=faultyDeviceCount(),canBook=bookingWindow().valid;q("#content").innerHTML=`<section class="booking-intro"><div class="booking-copy"><p class="eyebrow">${fd(date)}</p><h2>把时间留给探索</h2></div><section class="reservation-guide"><p class="eyebrow">预约流程</p><h3>三步完成</h3><ol><li><b>01</b>选择设备</li><li><b>02</b>设置时间</li><li><b>03</b>确认预约</li></ol></section></section><div class="booking"><section class="panel lab-panel"><div class="panel-head"><div><h2>实验室平面图</h2><p class="sub">点击空闲设备</p></div><label class="booking-date"><span>预约日期</span><input id="date" class="date" type="date" min="${today()}" value="${date}"></label></div><div class="legend"><span><i></i>* 空闲</span><span><i class="occ"></i>已预约</span><span><i class="bad"></i>! 故障</span><span><i class="pick"></i>已选择</span></div>${map("student")}</section><aside class="side-select"><div class="panel booking-flow">${timePick()}<div class="selection compact-selection">${selection()}</div><button id="book" class="primary" ${canBook?"":"disabled"}>确认预约 <span>→</span></button><button id="suggest" class="secondary wide" type="button">智能推荐</button><div id="scheduleSuggestions"></div></div><section class="panel lab-status"><p class="eyebrow">实验室状态</p><b>${available}<span> / 40</span></b><p>台设备可预约</p><div><span>故障设备</span><strong>${faulty}${language==="en"?" devices":" 台"}</strong></div></section><button id="report" class="secondary">报告设备故障</button></aside></div><section class="panel recent-panel schedule-panel"><div class="section-head"><div><h2>近期预约</h2><p class="sub">完整预约记录已合并至“我的”</p></div><button data-go="me" class="secondary small-btn">在我的中查看</button></div>${records(mine.slice(-3).reverse(),true)}</section>`;q("#date").onchange=e=>{date=e.target.value;desks.clear();bookingRequestKey=null;dashStudent()};bindTimes();bindDesks("student");q("#book").onclick=book;q("#suggest").onclick=loadScheduleCandidates;q("#report").onclick=reportSelectedDevice;renderScheduleCandidates();go();syncLanguage();scheduleLiveTimeCheck()}
+function dashStudent(){syncBookingRange();pruneSelections();head("STUDENT / RESERVATION","实验室预约");let mine=db.bookings.filter(x=>x.userId===user().id),available=DESKS.filter(n=>!fault(n)&&!conflict(n)).length,faulty=faultyDeviceCount(),canBook=bookingWindow().valid&&!bookingSubmitting;q("#content").innerHTML=`<section class="booking-intro"><div class="booking-copy"><p class="eyebrow">${fd(date)}</p><h2>把时间留给探索</h2></div><section class="reservation-guide"><p class="eyebrow">预约流程</p><h3>三步完成</h3><ol><li><b>01</b>选择设备</li><li><b>02</b>设置时间</li><li><b>03</b>确认预约</li></ol></section></section><div class="booking"><section class="panel lab-panel"><div class="panel-head"><div><h2>实验室平面图</h2><p class="sub">点击空闲设备</p></div><label class="booking-date"><span>预约日期</span><input id="date" class="date" type="date" min="${today()}" value="${date}"></label></div><div class="legend"><span><i></i>* 空闲</span><span><i class="occ"></i>已预约</span><span><i class="using"></i>使用中</span><span><i class="bad"></i>! 故障</span><span><i class="pick"></i>已选择</span></div>${map("student")}</section><aside class="side-select"><div class="panel booking-flow">${timePick()}<div class="selection compact-selection">${selection()}</div><button id="book" class="primary" ${canBook?"":"disabled"}>确认预约 <span>→</span></button><button id="suggest" class="secondary wide" type="button">智能推荐</button><div id="scheduleSuggestions"></div></div><section class="panel lab-status"><p class="eyebrow">实验室状态</p><b>${available}<span> / 40</span></b><p>台设备可预约</p><div><span>故障设备</span><strong>${faulty}${language==="en"?" devices":" 台"}</strong></div></section><button id="report" class="secondary">报告设备故障</button></aside></div><section class="panel recent-panel schedule-panel"><div class="section-head"><div><h2>近期预约</h2><p class="sub">完整预约记录已合并至“我的”</p></div><button data-go="me" class="secondary small-btn">在我的中查看</button></div>${records(mine.slice(-3).reverse(),true)}</section>`;q("#date").onchange=e=>{date=e.target.value;desks.clear();bookingRequestKey=null;dashStudent()};bindTimes();bindDesks("student");q("#book").onclick=book;q("#suggest").onclick=loadScheduleCandidates;q("#report").onclick=reportSelectedDevice;renderScheduleCandidates();go();syncLanguage();if(bookingSubmitting)qa("#startTime,#endTime,#date,#suggest").forEach(e=>e.disabled=true);scheduleLiveTimeCheck()}
 /** Reports the selected device without requiring a second device selection. */
 function reportSelectedDevice(){
   if(desks.size!==1){toast("请选择单台设备报告故障","error");return}
   openModal([...desks][0]);
 }
-/** Binds the single start selector; the end value is always exactly one hour later. */
-function bindTimes(){let start=q("#startTime");if(!start)return;start.onchange=e=>{startHour=+e.target.value;bookingRequestKey=null;syncBookingRange();dashStudent()}}
+/** Either endpoint refreshes availability across every selected hour. */
+function bindTimes(){let start=q("#startTime"),end=q("#endTime");if(!start||!end)return;start.onchange=e=>{if(bookingSubmitting)return;startHour=+e.target.value;bookingRequestKey=null;syncBookingRange();dashStudent()};end.onchange=e=>{if(bookingSubmitting)return;endHour=+e.target.value;bookingRequestKey=null;syncBookingRange();dashStudent()}}
 /** Handles administrator fault toggles and student multi-device selection. */
-function bindDesks(mode){qa("[data-desk]").forEach(e=>e.onclick=()=>{let n=+e.dataset.desk;if(mode==="admin"){let issue=latestOpenFault(n);if(fault(n)&&issue)openRepairModal(issue.id);else openModal(n);return}desks.has(n)?desks.delete(n):desks.add(n);bookingRequestKey=null;let selected=desks.has(n);e.classList.toggle("selected",selected);e.querySelector("i").textContent=selected?"●":"*";e.setAttribute("aria-label",language==="en"?`Device ${n}, ${selected?"Selected":"Available"}`:`${n}号设备，${selected?"已选择":"空闲"}`);q(".compact-selection").textContent=selection()})}
+function bindDesks(mode){qa("[data-desk]").forEach(e=>e.onclick=()=>{if(bookingSubmitting)return;let n=+e.dataset.desk;if(mode==="admin"){let issue=latestOpenFault(n);if(fault(n)&&issue)openRepairModal(issue.id);else openModal(n);return}desks.has(n)?desks.delete(n):desks.add(n);bookingRequestKey=null;let selected=desks.has(n);e.classList.toggle("selected",selected);e.querySelector("i").textContent=deviceInUse(n)?tr("使用中"):selected?"●":"*";e.setAttribute("aria-label",language==="en"?`Device ${n}, ${deviceInUse(n)?"In use, ":""}${selected?"Selected":"Available"}`:`${n}号设备，${deviceInUse(n)?"使用中，":""}${selected?"已选择":"空闲"}`);q(".compact-selection").textContent=selection()})}
 /** Shows the fixed two-second confirmation after a successful hourly booking. */
 function showBookingSuccess(durationMinutes){let overlay=q("#bookingOverlay"),reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;q("#bookingOverlayCopy").textContent=language==="en"?`Your ${durationMinutes}-minute reservation is ready`:`已为你保留 ${durationMinutes} 分钟`;if(reduce){dashStudent();toast("Reservation confirmed");return}overlay.hidden=false;overlay.setAttribute("aria-hidden","false");document.body.classList.add("booking-success");void overlay.offsetWidth;document.body.classList.add("booking-success-ready");setTimeout(()=>{overlay.hidden=true;overlay.setAttribute("aria-hidden","true");document.body.classList.remove("booking-success","booking-success-ready");dashStudent();toast("Reservation confirmed")},2000)}
 /** Validates every selected device immediately before storing the one-hour reservation. */
@@ -189,7 +192,7 @@ function adminFaultModule(){
 function lab(){
   if(!admin()){page="dashboard";dashStudent();return}
   let faulty=faultyDeviceCount();head("ADMIN / DEVICE STATUS","设备管理中心");
-  q("#content").innerHTML=`<section class="device-overview"><div><p class="eyebrow">DEVICE OPERATIONS</p><h2>设备管理中心</h2><p>在这里管理设备状态、学生预约与故障记录</p></div><div class="device-overview-metric"><b>${faulty}</b><span>当前故障</span></div></section><div class="device-layout"><section class="panel device-plan"><div class="section-head"><div><p class="eyebrow">LIVE FLOOR PLAN</p><h2>40 台设备平面图</h2><p class="sub">点击可用设备填写故障说明</p></div><div class="device-legend"><span><i></i>空闲</span><span><i class="bad"></i>故障</span></div></div>${map("admin")}</section><aside class="device-console"><section class="panel device-actions"><p class="eyebrow">MAINTENANCE ACTION</p><h2>设备状态</h2><p>选择可用设备创建故障记录；红色设备可恢复</p><button id="report" class="primary wide">标记设备故障 <span>→</span></button><button id="refreshStatus" class="secondary wide">强制刷新状态</button><button data-go="reservations" class="secondary wide">查看预约管理</button><button data-go="faults" class="secondary wide">查看故障维护</button></section></aside></div><div class="device-modules">${adminReservationModule()}${adminFaultModule()}</div>`;
+  q("#content").innerHTML=`<section class="device-overview"><div><p class="eyebrow">DEVICE OPERATIONS</p><h2>设备管理中心</h2><p>在这里管理设备状态、学生预约与故障记录</p></div><div class="device-overview-metric"><b>${faulty}</b><span>当前故障</span></div></section><div class="device-layout"><section class="panel device-plan"><div class="section-head"><div><p class="eyebrow">LIVE FLOOR PLAN</p><h2>40 台设备平面图</h2><p class="sub">点击可用设备填写故障说明</p></div><div class="device-legend"><span><i></i>空闲</span><span><i class="using"></i>使用中</span><span><i class="bad"></i>故障</span></div></div>${map("admin")}</section><aside class="device-console"><section class="panel device-actions"><p class="eyebrow">MAINTENANCE ACTION</p><h2>设备状态</h2><p>选择可用设备创建故障记录；红色设备可恢复</p><button id="report" class="primary wide">标记设备故障 <span>→</span></button><button id="refreshStatus" class="secondary wide">强制刷新状态</button><button data-go="reservations" class="secondary wide">查看预约管理</button><button data-go="faults" class="secondary wide">查看故障维护</button></section></aside></div><div class="device-modules">${adminReservationModule()}${adminFaultModule()}</div>`;
   bindDesks("admin");q("#refreshStatus").onclick=forceRefresh;q("#report").onclick=()=>openModal();
   bindAdminReservationFilters();bindIssueActions();bindAdminModuleToggles();go();syncLanguage();
   if(faultResponseMetrics===null)loadFaultResponseMetrics();
@@ -338,16 +341,39 @@ function cloudError(error){console.warn("Supabase request failed",error);return 
 
 /** Calls the atomic server function, which rejects a reservation race safely. */
 async function book(){
+  if(bookingSubmitting)return;
   if(!syncBookingRange().valid){toast("预约时间已开始或今日预约已结束。","error");dashStudent();return}
   if(!desks.size){toast("请至少选择一台设备。","error");return}
-  let button=q("#book");button.disabled=true;
+  if([...desks].some(n=>fault(n)||conflict(n))){toast("选择中存在故障或已预约设备。","error");dashStudent();return}
+  const request={date,start:startHour,end:endHour,devices:[...desks].sort((a,b)=>a-b),slots:[...hours]};
   bookingRequestKey??=crypto.randomUUID();
-  let {error}=await supabase.rpc("v2_create_reservations",{p_date:date,p_start_hour:startHour,p_device_numbers:[...desks].sort((a,b)=>a-b),p_idempotency_key:bookingRequestKey});
-  if(error){button.disabled=false;toast(cloudError(error),"error");await refreshCloud();return}
-  desks.clear();
-  bookingRequestKey=null;
-  await refreshCloud(false);
-  showBookingSuccess(60);
+  const batchKey=bookingRequestKey;
+  if(!bookingHourKeys.has(batchKey))bookingHourKeys=new Map([[batchKey,new Map()]]);
+  const keys=bookingHourKeys.get(batchKey);
+  bookingSubmitting=true;
+  let completed=0;
+  qa("#book,#startTime,#endTime,#date,#suggest").forEach(e=>e.disabled=true);
+  try{
+    // Use the existing protected hourly service, with a separate retry key for each hour.
+    for(const slot of request.slots){
+      if(!keys.has(slot))keys.set(slot,crypto.randomUUID());
+      const {error}=await supabase.rpc("v2_create_reservations",{p_date:request.date,p_start_hour:slot,p_device_numbers:request.devices,p_idempotency_key:keys.get(slot)});
+      if(error)throw error;
+      completed++;
+    }
+    desks.clear();bookingRequestKey=null;bookingHourKeys.clear();
+    try{await refreshCloud(false)}catch(error){console.warn("Booked successfully; refresh failed",error)}
+    showBookingSuccess((request.end-request.start)*60);
+  }catch(error){
+    console.warn("Reservation range request failed",error);
+    // Hourly calls are separate transactions: never claim the whole range succeeded.
+    const message=language==="en"?`Booking was not fully completed (${completed}/${request.slots.length} hours confirmed). Check Me before retrying.`:`预约未全部完成（已确认 ${completed}/${request.slots.length} 个小时），请先在“我的”核对预约记录后再操作。`;
+    toast(message,"error");
+    try{await refreshCloud()}catch(refreshError){console.warn("Reservation refresh failed",refreshError)}
+  }finally{
+    bookingSubmitting=false;
+    if(user()&&page==="dashboard")dashStudent();
+  }
 }
 
 async function cancelCloud(reservationId){
