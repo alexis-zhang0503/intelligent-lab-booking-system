@@ -46,6 +46,11 @@ test('assistant shows the DeepSeek balance message returned by the API',async()=
   const {run,node}=setup();run(`crypto={randomUUID:()=> 'request'};supabase.functions={invoke:async()=>({data:null,error:{context:{clone(){return this},json:async()=>({errors:[{message:'DeepSeek API balance is insufficient. Top up to continue.'}]})}}})}`);
   await run('askAgent()');assert.match(node('#content').innerHTML,/balance is insufficient/);
 });
+test('confirmed assistant reservation reuses the booking-success animation',async()=>{
+  const {run}=setup();run(`agentResponse={proposals:[{proposalId:'proposal',candidate:{items:[{reservation_date:'2026-11-08',start_hour:9,device_numbers:[3]},{reservation_date:'2026-11-08',start_hour:10,device_numbers:[3]}]}}]};crypto={randomUUID:()=> 'request'};supabase.functions={invoke:async()=>({data:{outcome:'confirmed'}})};refreshCloud=async()=>true;showBookingSuccess=minutes=>globalThis.successMinutes=minutes;agentPage=()=>{}`);
+  await run(`askAgent({proposalId:'proposal',idempotencyKey:'key'})`);
+  assert.equal(run('successMinutes'),120);
+});
 test('the dashboard report button calls the selection-aware handler',()=>{
   const {run}=setup();assert.match(run('dashStudent.toString()'),/q\("#report"\)\.onclick=reportSelectedDevice/);
 });
