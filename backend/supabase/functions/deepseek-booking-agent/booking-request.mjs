@@ -7,7 +7,8 @@ function date(value) {
 }
 
 function integer(value, minimum, maximum) {
-  return Number.isInteger(value) && value >= minimum && value <= maximum ? value : null;
+  const parsed = typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value) : value;
+  return Number.isInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
 }
 
 function integers(values, minimum, maximum) {
@@ -22,9 +23,9 @@ export function resolveBookingPlanInput(decision) {
   const singleDate = date(request.date);
   const startDate = date(request.startDate) ?? singleDate;
   const endDate = date(request.endDate) ?? singleDate;
-  const startHours = integers(request.startHours, 0, 23);
-  const durationHours = integer(request.durationHours, 1, 9);
-  const requiredDeviceCount = integer(request.requiredDeviceCount, 1, 40);
+  const startHours = integers(Array.isArray(request.startHours) ? request.startHours : [request.startHour], 0, 23);
+  const durationHours = integer(request.durationHours ?? request.duration, 1, 9);
+  const requiredDeviceCount = integer(request.requiredDeviceCount ?? request.deviceCount, 1, 40);
   const preferredDevices = request.preferredDevices == null ? [] : integers(request.preferredDevices, 1, 40);
   const weekdays = request.weekdays == null ? undefined : integers(request.weekdays, 0, 6);
   if (!startDate || !endDate || endDate < startDate || !startHours || !durationHours || !requiredDeviceCount || !preferredDevices || (request.weekdays != null && !weekdays)) return null;

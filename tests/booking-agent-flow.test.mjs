@@ -20,6 +20,10 @@ test("a complete natural-language interpretation is safe to plan", () => {
   assert.deepEqual(resolveBookingPlanInput({ ready: true, request: { date: "2026-11-05", startHours: [14], durationHours: 1, requiredDeviceCount: 2 } }), { date: "2026-11-05", startHours: [14], durationHours: 1, requiredDeviceCount: 2, preferredDevices: [] });
 });
 
+test("common model field aliases still become a valid booking plan", () => {
+  assert.deepEqual(resolveBookingPlanInput({ ready: true, request: { date: "2026-11-06", startHour: "14", duration: "2", deviceCount: "2" } }), { date: "2026-11-06", startHours: [14], durationHours: 2, requiredDeviceCount: 2, preferredDevices: [] });
+});
+
 test("follow-up details retain the prior booking request for DeepSeek", () => {
   assert.deepEqual(conversationHistory([
     { role: "user", message: "明天，需要 2 台设备" },
