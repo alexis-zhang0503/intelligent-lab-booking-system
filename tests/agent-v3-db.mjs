@@ -4,6 +4,7 @@ const {PGlite}=await import(process.env.PGLITE_MODULE||'@electric-sql/pglite');
 const {pgcrypto}=await import(process.env.PGCRYPTO_MODULE||'@electric-sql/pglite/contrib/pgcrypto');
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import {runBookingAgent} from '../backend/supabase/functions/deepseek-booking-agent/booking-agent-tools.mjs';
 
 const root=new URL('../backend/supabase/',import.meta.url);
 const student='00000000-0000-0000-0000-000000000011';
@@ -20,12 +21,19 @@ try{
   for(const [id,name] of [[student,'Student'],[other,'Other'],[admin,'Admin']]) await db.query('insert into auth.users values($1,$2,$3)',[id,`${name}@lab.test`,{login_id:name,display_name:name}]);
   await db.query(`update public.profiles set role='admin' where id=$1`,[admin]);
   const asUser=async id=>{await db.exec('reset role');await db.query(`select set_config('request.jwt.claim.sub',$1,false)`,[id]);await db.exec('set role authenticated')};
-  const date=(await db.query(`select (min(effective_at) at time zone 'Asia/Shanghai')::date as date from public.device_status_history`)).rows[0].date;
+  const date=(await db.query(`select ((now() at time zone 'Asia/Shanghai')::date + 1)::text as date`)).rows[0].date;
   await asUser(student);
   const session=(await db.query(`select * from public.v3_save_agent_session(null,'booking_planner',$1::jsonb)`,[{}])).rows[0];
   const mergedSession=(await db.query(`select * from public.v3_save_agent_session($1::uuid,'booking_planner',$2::jsonb)`,[session.session_id,{has_explicit_booking_selection:true}])).rows[0];
   assert.equal(mergedSession.constraints.has_explicit_booking_selection,true);
-  const plan=(await db.query(`select public.v3_plan_schedule($1::jsonb) as plan`,[{date,startHours:[8],durationHours:1,requiredDeviceCount:2,preferredDevices:[1,2]}])).rows[0].plan;
+  const availability={date,startHours:[8],durationHours:1,requiredDeviceCount:2,preferredDevices:[1,2]};
+  const plan=await runBookingAgent({
+    today:date,message:'帮我找两台设备，用一个小时',history:[],language:'zh',
+    complete:async messages=>({message:messages.at(-1).role==='tool'
+      ? {role:'assistant',content:'找到可用设备，请选择方案。'}
+      : {role:'assistant',tool_calls:[{id:'lookup',type:'function',function:{name:'search_availability',arguments:JSON.stringify(availability)}}]}}),
+    plan:async request=>(await db.query(`select public.v3_plan_schedule($1::jsonb) as plan`,[request])).rows[0].plan,
+  });
   assert.ok(plan.candidates.length>=1);
   const proposal=(await db.query(`select public.v3_create_booking_proposal($1::uuid,$2::jsonb) as proposal`,[session.session_id,plan.candidates[0]])).rows[0].proposal;
   assert.equal(proposal.state,'ready');

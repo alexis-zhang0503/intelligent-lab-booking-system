@@ -26,7 +26,8 @@ export function resolveBookingPlanInput(decision) {
   const startHours = integers(Array.isArray(request.startHours) ? request.startHours : [request.startHour], 0, 23);
   const durationHours = integer(request.durationHours ?? request.duration, 1, 9);
   const requiredDeviceCount = integer(request.requiredDeviceCount ?? request.deviceCount, 1, 40);
-  const preferredDevices = request.preferredDevices == null ? [] : integers(request.preferredDevices, 1, 40);
+  const preferredDevices = request.preferredDevices == null || (Array.isArray(request.preferredDevices) && request.preferredDevices.length === 0)
+    ? [] : integers(request.preferredDevices, 1, 40);
   const weekdays = request.weekdays == null ? undefined : integers(request.weekdays, 0, 6);
   if (!startDate || !endDate || endDate < startDate || !startHours || !durationHours || !requiredDeviceCount || !preferredDevices || (request.weekdays != null && !weekdays)) return null;
   return { ...(singleDate ? { date: singleDate } : { startDate, endDate }), startHours, durationHours, requiredDeviceCount, preferredDevices, ...(weekdays ? { weekdays } : {}) };

@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { bookingContext, parseBookingDecision, resolveBookingPlanInput } from "./booking-request.mjs";
+import { bookingContext, resolveBookingPlanInput } from "./booking-request.mjs";
 import { conversationHistory } from "./conversation-history.mjs";
-import { explicitBookingRequest } from "./explicit-booking-request.mjs";
+import { bookingTools, runBookingAgent } from "./booking-agent-tools.mjs";
 
 type AgentType = "booking_planner" | "admin_analyst" | "fault_responder";
 type AgentRequest = {
@@ -111,36 +111,37 @@ Deno.serve(async (request) => {
       return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
     }
   };
-  const deepseekBookingDecision = async () => {
+  const bookingDeadline = Date.now() + 24_000;
+  const completeBookingTurn = async (messages: unknown[], toolsEnabled: boolean) => {
     if (!deepseekApiKey) return { error: { code: "DEEPSEEK_KEY_UNAVAILABLE", message: text(body.language, "智能助手暂不可用，请联系管理员配置 DeepSeek API。", "The assistant is unavailable. Ask an administrator to configure the DeepSeek API."), status: 503 } };
     try {
-      const history = conversationHistory(body.history);
       const modelResponse = await fetch("https://api.deepseek.com/chat/completions", {
-        method: "POST", signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "deepseek-chat", temperature: 0.1, response_format: { type: "json_object" }, messages: [
-          { role: "system", content: `You are the intake step for a laboratory booking assistant. Today is ${shanghaiDate()} in Asia/Shanghai. Return one JSON object only. When complete, it must be exactly {"ready":true,"request":{"date":"YYYY-MM-DD","startHours":[14],"durationHours":2,"requiredDeviceCount":2,"preferredDevices":[]},"message":null}; startHours must be an array of integers. When incomplete, it must be exactly {"ready":false,"request":null,"message":"one concise follow-up"}. Use the user's message and, only when present, the explicitly selected booking context. Set ready=true only when date, an exact start hour, duration, and device count are all known; resolve relative dates to YYYY-MM-DD. When ready=false, request the missing details in one concise, helpful ${body.language === "zh" ? "Chinese" : "English"} sentence. Never check or mention availability, capacity, database fields, defaults, internal state, or an earlier time slot. Do not invent missing booking details.` },
-          { role: "user", content: JSON.stringify({ history, userMessage: body.message ?? "", selectedBooking: bookingContext(input) }) },
-        ] }),
+        method: "POST", signal: AbortSignal.timeout(Math.max(1, Math.min(10_000, bookingDeadline - Date.now()))),
+        headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "deepseek-flash", thinking: { type: "disabled" }, temperature: 0.1, max_tokens: 640,
+          messages, tools: bookingTools, tool_choice: toolsEnabled ? "auto" : "none" }),
       });
       if (modelResponse.status === 402) return { error: { code: "DEEPSEEK_BALANCE_INSUFFICIENT", message: text(body.language, "DeepSeek API 额度不足，请充值后继续使用智能助手。", "Your DeepSeek API balance is insufficient. Top up to continue using the assistant."), status: 402 } };
       if (!modelResponse.ok) return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
       const completion = await modelResponse.json();
-      const content = completion?.choices?.[0]?.message?.content;
-      if (typeof content !== "string") return { error: { code: "DEEPSEEK_EMPTY_RESPONSE", message: text(body.language, "智能助手没有返回内容，请稍后重试。", "The assistant did not return a response. Please try again later."), status: 503 } };
-      const decision = parseBookingDecision(content);
-      const planRequest = resolveBookingPlanInput(decision) ?? explicitBookingRequest([...history.filter(item => item.role === "user").map(item => item.message), body.message ?? ""], shanghaiDate());
-      const message = typeof decision?.message === "string" ? decision.message.trim() : "";
-      if (!planRequest && !message) return { error: { code: "DEEPSEEK_INVALID_RESPONSE", message: text(body.language, "智能助手没有理解这条需求，请换种说法试试。", "The assistant could not understand that request. Please try phrasing it differently."), status: 503 } };
-      return { planRequest, message };
+      return { message: completion?.choices?.[0]?.message };
     } catch {
       return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
     }
   };
 
+  let resumeId = validUuid(body.sessionId) ? body.sessionId : null;
+  if (agentType === "booking_planner" && resumeId) {
+    const { data, error } = await supabase.from("agent_sessions").select("id")
+      .eq("id", resumeId).eq("user_id", profile.id).eq("agent_type", agentType)
+      .gt("expires_at", new Date().toISOString()).maybeSingle();
+    if (error) return fail("SESSION_UNAVAILABLE", text(body.language, "暂时无法开启助手，请稍后重试。", "The assistant could not start just now. Please try again later."), 503);
+    resumeId = data?.id ?? null;
+  }
   const { data: session, error: sessionError } = await supabase.rpc("v3_save_agent_session", {
-    p_session_id: validUuid(body.sessionId) ? body.sessionId : null,
+    p_session_id: resumeId,
     p_agent_type: agentType,
-    p_constraints: input,
+    p_constraints: agentType === "booking_planner" ? {} : input,
   });
   if (sessionError || !Array.isArray(session) || !session[0]?.session_id) return fail("SESSION_UNAVAILABLE", text(body.language, "暂时无法开启助手，请稍后重试。", "The assistant could not start just now. Please try again later."), 503);
   sessionId = session[0].session_id;
@@ -154,10 +155,10 @@ Deno.serve(async (request) => {
     if (error) return fail("PROPOSAL_EXECUTION_FAILED", error.message, 409);
     const facts = { execution: data ?? {} };
     const reply = await deepseekReply(facts, 0, "The confirmed operation has completed successfully.");
-    const payload = "error" in reply
+    const payload = reply.error
       ? response("confirmed", facts, reply.error.message, [], [{ code: reply.error.code, message: reply.error.message }])
       : response("confirmed", facts, reply.message);
-    await audit(payload, "error" in reply ? reply.error.message : null);
+    await audit(payload, reply.error?.message ?? null);
     return json(payload);
   }
 
@@ -165,22 +166,36 @@ Deno.serve(async (request) => {
     let facts: Record<string, unknown> = {};
     let proposals: unknown[] = [];
     if (agentType === "booking_planner") {
-      const decision = await deepseekBookingDecision();
-      if ("error" in decision) return fail(decision.error.code, decision.error.message, decision.error.status);
-      if (!decision.planRequest) {
-        const payload = response("suggested", { guidance: true }, decision.message);
-        await audit(payload);
-        return json(payload);
+      const turn = await runBookingAgent({
+        message: typeof body.message === "string" ? body.message.slice(0, 500) : "",
+        history: conversationHistory(body.history), selectedBooking: bookingContext(input),
+        previousSearch: resolveBookingPlanInput({ request: session[0].constraints?.lastBookingSearch }),
+        today: shanghaiDate(), language: body.language, complete: completeBookingTurn,
+        plan: async (planRequest: unknown) => {
+          const { data, error } = await supabase.rpc("v3_plan_schedule", { p_request: planRequest });
+          if (error) throw error;
+          return data;
+        },
+      });
+      if (turn.error) return fail(turn.error.code, turn.error.message, turn.error.status);
+      if (!turn.message) return fail("DEEPSEEK_INVALID_RESPONSE", text(body.language, "智能助手没有理解这条需求，请换种说法试试。", "The assistant could not understand that request. Please try phrasing it differently."), 503);
+      if (turn.context) {
+        const { error } = await supabase.rpc("v3_save_agent_session", {
+          p_session_id: sessionId, p_agent_type: agentType, p_constraints: { lastBookingSearch: turn.context },
+        });
+        if (error) throw error;
       }
-      const { data: schedule, error } = await supabase.rpc("v3_plan_schedule", { p_request: decision.planRequest });
-      if (error) return fail("PLAN_UNAVAILABLE", text(body.language, "暂时无法生成预约方案，请稍后重试。", "A reservation plan could not be prepared just now. Please try again later."), 503);
-      const candidates = Array.isArray(schedule?.candidates) ? schedule.candidates.slice(0, 3) : [];
-      for (const candidate of candidates) {
+      for (const candidate of turn.candidates) {
         const proposalResult = await supabase.rpc("v3_create_booking_proposal", { p_session_id: sessionId, p_candidate: candidate });
         if (proposalResult.error) throw proposalResult.error;
         proposals.push({ ...proposalResult.data, candidate });
       }
-      facts = { schedule: { ...schedule, candidates }, timezone: "Asia/Shanghai", contract: "Candidates are deterministic database facts; confirmation accepts proposalId only." };
+      facts = turn.context
+        ? { schedule: { candidates: turn.candidates, failures: turn.failures }, timezone: "Asia/Shanghai", report: turn.report }
+        : { guidance: true, report: turn.report };
+      const payload = response("suggested", facts, turn.message, proposals);
+      await audit(payload);
+      return json(payload);
     } else if (agentType === "admin_analyst") {
       const startDate = String(constraints.startDate ?? constraints.date ?? "");
       const endDate = String(constraints.endDate ?? constraints.date ?? "");
@@ -207,7 +222,7 @@ Deno.serve(async (request) => {
     }
 
     const reply = await deepseekReply(facts, proposals.length);
-    if ("error" in reply) return fail(reply.error.code, reply.error.message, reply.error.status);
+    if (reply.error) return fail(reply.error.code, reply.error.message, reply.error.status);
     const payload = response("suggested", facts, reply.message, proposals);
     await audit(payload);
     return json(payload);
