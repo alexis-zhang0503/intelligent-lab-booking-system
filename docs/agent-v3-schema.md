@@ -42,6 +42,7 @@ Apply in order:
 3. `v3-1-agent-layer-migration.sql`.
 4. `v3-2-agent-fault-note-compat.sql`.
 5. `v3-3-agent-session-clarification-fix.sql`.
+6. `v3-4-agent-privacy-hardening.sql`.
 
 ## Verification and rollback
 

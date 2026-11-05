@@ -37,6 +37,14 @@ test("a complete Chinese request reaches scheduling even if the model decision i
   assert.deepEqual(explicitBookingRequest(["明天 14:00 开始，使用 2 小时，需要 2 台设备。"], "2026-11-05"), { date: "2026-11-06", startHours: [14], durationHours: 2, requiredDeviceCount: 2, preferredDevices: [] });
 });
 
+test("a Chinese point-hour follow-up completes an earlier request", () => {
+  assert.deepEqual(explicitBookingRequest(["明天上午使用 3 小时，需要 10 台设备。", "10点"], "2026-11-05"), { date: "2026-11-06", startHours: [10], durationHours: 3, requiredDeviceCount: 10, preferredDevices: [] });
+});
+
+test("a Chinese month-and-day date is accepted", () => {
+  assert.deepEqual(explicitBookingRequest(["11月6日10点开始，使用 3 小时，需要 10 台设备。"], "2026-11-05"), { date: "2026-11-06", startHours: [10], durationHours: 3, requiredDeviceCount: 10, preferredDevices: [] });
+});
+
 test("follow-up details retain the prior booking request for DeepSeek", () => {
   assert.deepEqual(conversationHistory([
     { role: "user", message: "明天，需要 2 台设备" },

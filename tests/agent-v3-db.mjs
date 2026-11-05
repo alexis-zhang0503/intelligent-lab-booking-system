@@ -16,7 +16,7 @@ try{
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     grant usage on schema auth to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;
     create extension pgcrypto with schema extensions;create publication supabase_realtime;`);
-  for(const file of ['schema.sql','cloud-migration.sql','v2-0-migration.sql','v2-1-fault-response-agent-migration.sql','v2-2-attendance-fix.sql','optional-fault-notes-migration.sql','v3-0-usage-metrics-migration.sql','v3-1-agent-layer-migration.sql','v3-2-agent-fault-note-compat.sql','v3-3-agent-session-clarification-fix.sql']) await db.exec(await fs.readFile(new URL(file,root),'utf8'));
+  for(const file of ['schema.sql','cloud-migration.sql','v2-0-migration.sql','v2-1-fault-response-agent-migration.sql','v2-2-attendance-fix.sql','optional-fault-notes-migration.sql','v3-0-usage-metrics-migration.sql','v3-1-agent-layer-migration.sql','v3-2-agent-fault-note-compat.sql','v3-3-agent-session-clarification-fix.sql','v3-4-agent-privacy-hardening.sql']) await db.exec(await fs.readFile(new URL(file,root),'utf8'));
   for(const [id,name] of [[student,'Student'],[other,'Other'],[admin,'Admin']]) await db.query('insert into auth.users values($1,$2,$3)',[id,`${name}@lab.test`,{login_id:name,display_name:name}]);
   await db.query(`update public.profiles set role='admin' where id=$1`,[admin]);
   const asUser=async id=>{await db.exec('reset role');await db.query(`select set_config('request.jwt.claim.sub',$1,false)`,[id]);await db.exec('set role authenticated')};
@@ -29,6 +29,18 @@ try{
   assert.ok(plan.candidates.length>=1);
   const proposal=(await db.query(`select public.v3_create_booking_proposal($1::uuid,$2::jsonb) as proposal`,[session.session_id,plan.candidates[0]])).rows[0].proposal;
   assert.equal(proposal.state,'ready');
+  await db.query(`select public.v3_log_agent_interaction($1::uuid,'booking_planner',$2::jsonb,$3::jsonb,'suggested',null)`,['10000000-0000-0000-0000-000000000010',{message:'Student private request'},{message:'Student private reply'}]);
+  await asUser(other);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_sessions`)).rows[0].count,0);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_proposals`)).rows[0].count,0);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_proposal_items`)).rows[0].count,0);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_audit_logs`)).rows[0].count,0);
+  await asUser(admin);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_sessions`)).rows[0].count,0);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_proposals`)).rows[0].count,0);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_proposal_items`)).rows[0].count,0);
+  assert.equal((await db.query(`select count(*)::int as count from public.agent_audit_logs`)).rows[0].count,0);
+  await asUser(student);
   const key='10000000-0000-0000-0000-000000000001';
   const confirmed=(await db.query(`select public.v3_create_reservation_plan($1::uuid,$2::uuid) as result`,[proposal.proposalId,key])).rows[0].result;
   assert.equal(confirmed.reservationIds.length,2);
