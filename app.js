@@ -229,7 +229,9 @@ function lab(){
   bindAdminReservationFilters();bindIssueActions();bindAdminModuleToggles();go();syncLanguage();
   if(faultResponseMetrics===null)loadFaultResponseMetrics();
 }
-function users(){head("ADMIN / USERS","用户档案");q("#content").innerHTML=`<section class="panel"><h2>已注册用户</h2><p class="sub">注册角色、账号和累计预约时长。</p><div class="table-wrap"><table class="table profile-identity-table"><thead><tr><th>姓名</th><th>身份</th><th>学号 / 工号</th><th>累计时长</th><th>账号操作</th></tr></thead><tbody>${db.users.map(x=>`<tr><td>${esc(x.name)}</td><td><span class="tag">${x.role==="admin"?"管理员":"学生"}</span></td><td>${esc(x.loginId)}</td><td>${durationLabel(db.bookings.filter(b=>b.userId===x.id))}</td><td>${x.role==="student"?`<button class="secondary small-btn danger-btn" data-remove-user="${x.id}">注销账号</button>`:"—"}</td></tr>`).join("")}</tbody></table></div></section>`;qa("[data-remove-user]").forEach(button=>button.onclick=()=>removeStudent(button.dataset.removeUser));syncLanguage()}
+function userDirectoryRows(members,role){return members.length?`<table class="table profile-identity-table"><thead><tr><th>姓名</th><th>${role==="admin"?"管理员邮箱":"学号"}</th><th>累计时长</th>${role==="student"?"<th>账号操作</th>":""}</tr></thead><tbody>${members.map(member=>`<tr data-user-id="${esc(member.id)}"><td data-profile-field="name">${esc(member.name)}</td><td data-profile-field="loginId">${esc(member.loginId)}</td><td>${durationLabel(db.bookings.filter(booking=>booking.userId===member.id))}</td>${role==="student"?`<td><button class="secondary small-btn danger-btn" data-remove-user="${esc(member.id)}">注销账号</button></td>`:""}</tr>`).join("")}</tbody></table>`:`<p class="empty">暂无记录。</p>`}
+function userDirectoryColumn(role,members){let title=role==="admin"?"管理员":"学生";return `<section class="panel user-directory-column user-directory-${role}"><header class="user-directory-head"><h2>${title}</h2><span>${members.length}</span></header><div class="user-directory-scroll" tabindex="0" aria-label="${title}">${userDirectoryRows(members,role)}</div></section>`}
+function users(){head("ADMIN / USERS","用户档案");let administrators=db.users.filter(member=>member.role==="admin"),students=db.users.filter(member=>member.role==="student");q("#content").innerHTML=`<section class="user-directory">${userDirectoryColumn("admin",administrators)}${userDirectoryColumn("student",students)}</section>`;qa("[data-remove-user]").forEach(button=>button.onclick=()=>removeStudent(button.dataset.removeUser));syncLanguage()}
 function reports(){
   if(admin()){page="dashboard";dashAdmin();return}
   page="me";me();
@@ -640,7 +642,7 @@ async function updateProfileIdentity(target,input,field,originalValue){
 /** Converts an administrator-table name or student/staff ID cell to an inline field. */
 function beginProfileIdentityEdit(cell,field){
   if(cell.querySelector("input"))return;
-  let row=cell.parentElement,rowIndex=[...row.parentElement.children].indexOf(row),target=db.users[rowIndex];
+  let row=cell.parentElement,target=db.users.find(item=>item.id===row.dataset.userId);
   if(!target)return;
   let originalValue=target[field],input=document.createElement("input"),saved=false;
   input.value=originalValue;input.maxLength=field==="name"?16:(target.role==="student"?20:80);input.setAttribute("aria-label",field==="name"?(language==="en"?"Display name":"显示名称"):(language==="en"?"Student or staff ID":"学号或工号"));
@@ -656,9 +658,8 @@ function beginProfileIdentityEdit(cell,field){
 document.addEventListener("click",event=>{
   let cell=event.target.closest("#content .table tbody tr td"),row=cell?.parentElement;
   if(!cell||!row||!admin()||page!=="users")return;
-  let column=[...row.children].indexOf(cell);
-  if(column===0)beginProfileIdentityEdit(cell,"name");
-  if(column===2)beginProfileIdentityEdit(cell,"loginId");
+  let field=cell.dataset.profileField;
+  if(field)beginProfileIdentityEdit(cell,field);
 });
 
 /** Presents the latest fault record near its red device square without hiding it in a native title. */
