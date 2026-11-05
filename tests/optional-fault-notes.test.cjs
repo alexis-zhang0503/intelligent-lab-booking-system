@@ -34,6 +34,9 @@ test('removal requires an administrator, resolved timestamp, and a full 24 hours
 test('only resolved records expose a gated delete button and empty reasons have a readable fallback',()=>{
  const {run}=setup();run(`db.users[0].role='admin'`);assert.match(run(`faultList([{id:'r',deskNo:23,status:'resolved',description:'',resolvedAt:new Date().toISOString(),createdAt:new Date().toISOString()}])`),/data-delete-issue="r" disabled/);assert.match(run(`faultList([{id:'r',deskNo:23,status:'faulty',description:'',createdAt:new Date().toISOString()}])`),/未填写故障说明/);assert.doesNotMatch(run(`faultList([{id:'r',deskNo:23,status:'faulty',createdAt:new Date().toISOString()}])`),/data-delete-issue/);
 });
+test('device page limits fault management to unresolved records while overview retains history',()=>{
+ const {run}=setup();run(`db.faults=[{id:'open',status:'faulty'},{id:'done',status:'resolved'}]`);assert.deepEqual([...run(`visibleAdminFaults('open')`).map(item=>item.id)],['open']);assert.equal(run(`visibleAdminFaults('all').length`),2);
+});
 test('declined deletion does nothing; confirmed removal is persisted and stays removed if refresh fails',async()=>{
  const {run}=setup();run(`db.users[0].role='admin';db.faults=[{id:'r',deskNo:23,status:'resolved',resolvedAt:new Date(Date.now()-86400001).toISOString()}];window.confirm=()=>false;supabase.rpc=()=>{throw new Error('must not call')}`);await run(`deleteIssueRecord('r')`);assert.equal(run('db.faults.length'),1);run(`window.confirm=()=>true;supabase.rpc=async(name,args)=>{globalThis.request={name,args};return {error:null}};refreshCloud=async()=>false;render=()=>{}`);await run(`deleteIssueRecord('r')`);assert.equal(run('request.name'),'archive_resolved_issue');assert.equal(run('db.faults.length'),0);assert.match(run('lastToast.text'),/刷新失败/);
 });

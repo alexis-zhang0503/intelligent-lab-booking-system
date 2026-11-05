@@ -16,6 +16,9 @@ test('admin rows contain escaped owner, student ID, exact date, hour and cancell
 test('date, status and owner/device searches combine and preserve legacy reserved rows',()=>{
  const {run}=setup();run(`db.bookings.push({...db.bookings[0],id:'old',status:'cancelled',date:today(-1)});adminBookingFilters={date:today(1),status:'confirmed',query:'b2501'};db.bookings[0].status='reserved'`);assert.equal(run('filteredAdminBookings().length'),1);run(`adminBookingFilters.query='23'`);assert.equal(run('filteredAdminBookings().length'),1);run(`adminBookingFilters.query='unmatched'`);assert.equal(run('filteredAdminBookings().length'),0);
 });
+test('device page limits reservation management to today while overview retains all records',()=>{
+ const {run}=setup();run(`db.bookings=[{...db.bookings[0],id:'today',date:today()},{...db.bookings[0],id:'older',date:today(-1)}];adminBookingFilters={date:'',status:'',query:''};adminBookingScope='today'`);assert.deepEqual([...run('filteredAdminBookings()').map(item=>item.id)],['today']);run(`adminBookingScope='all'`);assert.equal(run('filteredAdminBookings().length'),2);
+});
 test('students cannot access actions; started, completed and admin-owned bookings have no force action',()=>{
  const {run}=setup();run(`db.session='s'`);assert.equal(run('canAdminCancel(db.bookings[0])'),false);run(`db.session='a';db.bookings[0].date=today(-1)`);assert.equal(run('canAdminCancel(db.bookings[0])'),false);run(`db.bookings[0].date=today(1);db.bookings[0].status='in_use'`);assert.equal(run('canAdminCancel(db.bookings[0])'),false);run(`db.bookings[0].status='completed'`);assert.equal(run('canAdminCancel(db.bookings[0])'),false);run(`db.bookings[0].status='confirmed';db.bookings[0].userId='a'`);assert.equal(run('canAdminCancel(db.bookings[0])'),false);
 });

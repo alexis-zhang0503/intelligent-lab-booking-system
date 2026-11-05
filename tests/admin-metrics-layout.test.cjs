@@ -11,7 +11,12 @@ test('administrator metrics use their own responsive layout instead of booking c
   assert.match(dashboard,/admin-metrics-layout/);
   assert.match(dashboard,/admin-metrics-filters/);
   assert.doesNotMatch(dashboard,/side-select/);
+  assert.doesNotMatch(dashboard,/设备分钟|刷新 V3/);
   assert.match(app,/admin-metric-tables/);
+  assert.match(app,/每台设备的利用/);
+  assert.match(app,/每个时间段的利用/);
+  assert.doesNotMatch(app.match(/function usageMetricDetails\([\s\S]*?\n\}/)?.[0]||'',/slice\(0,5\)/);
   assert.match(css,/\.admin-metrics-layout\{/);
   assert.match(css,/\.admin-metric-tables\{/);
+  assert.match(css,/\.admin-export\{display:grid/);
 });
