@@ -1,8 +1,8 @@
-import { attendanceState, attendanceError, reservationStart } from "./web/core/attendanceRules.js";
-import { registrationError, authErrorMessage } from "./web/core/authRules.js";
-import { DEVICE_NUMBERS as DESKS, HOURLY_SLOTS as SLOTS, hourToMinutes, hourlyRange } from "./web/core/hourlyRules.js";
-import { supabase } from "./web/core/supabaseClient.js";
-import { playIntro } from "./web/ui/introMotion.js?v=20261103-02";
+import { attendanceState, attendanceError, reservationStart } from "./core/attendanceRules.js";
+import { registrationError, authErrorMessage } from "./core/authRules.js";
+import { DEVICE_NUMBERS as DESKS, HOURLY_SLOTS as SLOTS, hourToMinutes, hourlyRange } from "./core/hourlyRules.js";
+import { supabase } from "./core/supabaseClient.js";
+import { playIntro } from "./ui/introMotion.js?v=20261103-02";
 
 // Browser storage holds language preference only; reservation data stays in Supabase.
 const LANGKEY="lab-booking-language";

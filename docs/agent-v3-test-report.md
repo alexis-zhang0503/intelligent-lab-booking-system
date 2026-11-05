@@ -17,7 +17,7 @@ future series cancellation is grouped
 node --test tests/usage-metrics-contract.test.cjs tests/attendance.test.mjs
 PASS: 17/17
 
-node --check app.js
+node --check web/app.js
 PASS
 git diff --check
 PASS
@@ -49,7 +49,7 @@ PASS
 
 ## Known verification limits
 
-PGlite does not prove Supabase RLS, Edge Function deployment, DeepSeek network behavior, or concurrent transaction behavior on a managed PostgreSQL instance. Existing legacy browser CJS suites remain incompatible with ESM `app.js` before these changes. These are not reported as passing.
+PGlite does not prove Supabase RLS, Edge Function deployment, DeepSeek network behavior, or concurrent transaction behavior on a managed PostgreSQL instance. Existing legacy browser CJS suites remain incompatible with ESM `web/app.js` before these changes. These are not reported as passing.
 
 ## Staging deployment checklist
 

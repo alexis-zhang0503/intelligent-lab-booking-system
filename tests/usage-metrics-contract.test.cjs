@@ -65,7 +65,7 @@ test('V3 migration retains the required server-side safeguards and definitions',
 });
 
 test('administrator dashboard and agent use the V3 metric contract',()=>{
-  const app=fs.readFileSync(path.resolve(__dirname,'../app.js'),'utf8');
+  const app=fs.readFileSync(path.resolve(__dirname,'../web/app.js'),'utf8');
   const agent=fs.readFileSync(path.resolve(__dirname,'../backend/supabase/functions/deepseek-booking-agent/index.ts'),'utf8');
   assert.match(app,/v3_admin_usage_metrics/);
   assert.match(app,/actual_usage_rate/);

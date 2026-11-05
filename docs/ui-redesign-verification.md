@@ -2,7 +2,7 @@
 
 ## Phase 1 audit
 
-改造前客户端为 Vanilla JS 单页渲染：`app.js` 生成学生预约、管理员总览/设备/用户、故障、个人中心和 AI 页面；`styles.css`、`refinement.css`、`v3-ui.css` 存在多层覆盖。发现的问题：顶部导航与业务工作区割裂；设备、筛选和操作卡片重复套框；页面标题偏营销化；管理员指标缺少与管理画布的结构关系；AI 为单块表单，缺少上下文；大量旧颜色直接写在 CSS 中。
+改造前客户端为 Vanilla JS 单页渲染：`web/app.js` 生成学生预约、管理员总览/设备/用户、故障、个人中心和 AI 页面；`web/styles/styles.css`、`web/styles/refinement.css`、`web/styles/v3-ui.css` 存在多层覆盖。发现的问题：顶部导航与业务工作区割裂；设备、筛选和操作卡片重复套框；页面标题偏营销化；管理员指标缺少与管理画布的结构关系；AI 为单块表单，缺少上下文；大量旧颜色直接写在 CSS 中。
 
 ## 已修改的真实页面
 
@@ -15,7 +15,7 @@
 
 | 项目 | 结果 |
 |---|---|
-| 静态 JS 语法 / CSS diff 检查 | 通过：`node --check app.js`、`node --check web/ui/introMotion.js` 与 `git diff --check` |
+| 静态 JS 语法 / CSS diff 检查 | 通过：`node --check web/app.js`、`node --check web/ui/introMotion.js` 与 `git diff --check` |
 | 登录页视觉 | 已在前台本地浏览器验证：白底层级、标志、渐变标题、输入/按钮和开场结束均可见 |
 | 学生预约、候选方案、签到签退 | 需要已授权学生会话；不得用假数据替代，未验证 |
 | 管理员指标、设备、故障处理 | 需要已授权管理员会话；不得绕过 RLS，未验证 |
@@ -23,6 +23,6 @@
 
 ## 回归测试限制
 
-五个现有 `.test.cjs` 均在业务断言前失败：测试通过 Node `vm` 把 `app.js` 当作 classic script 执行，而该文件在本轮之前已经使用 ESM `import`。报错为 `SyntaxError: Cannot use import statement outside a module`。本次没有修改测试适配层，以免改变业务测试的范围；该阻塞项需要单独将测试迁移为 ESM 或提供模块 mock。
+五个现有 `.test.cjs` 均在业务断言前失败：测试通过 Node `vm` 把 `web/app.js` 当作 classic script 执行，而该文件在本轮之前已经使用 ESM `import`。报错为 `SyntaxError: Cannot use import statement outside a module`。本次没有修改测试适配层，以免改变业务测试的范围；该阻塞项需要单独将测试迁移为 ESM 或提供模块 mock。
 
 未验证项目会在完成后的复核中保留为未验证，不会以截图或本地模拟冒充生产 Supabase 数据。

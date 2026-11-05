@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
-const css=fs.readFileSync(new URL('../lab-console.css',import.meta.url),'utf8');
+const css=fs.readFileSync(new URL('../web/styles/lab-console.css',import.meta.url),'utf8');
 
 test('light laboratory console is loaded after the existing interface layers',()=>{
   assert.match(html,/agent-assistant\.css[\s\S]*lab-console\.css/);
@@ -19,7 +19,7 @@ test('secondary engineering copy is visually removed without suppressing control
 });
 
 test('user profiles split administrators and students into independent scroll panels',()=>{
-  const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^playSiteEntry\(\);\r?\n/gm,'').replace(/\r?\nbootCloud\(\);\s*$/,'');
+  const source=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^playSiteEntry\(\);\r?\n/gm,'').replace(/\r?\nbootCloud\(\);\s*$/,'');
   const nodes=new Map(),query=selector=>{
     if(!nodes.has(selector))nodes.set(selector,{innerHTML:'',textContent:'',dataset:{}});
     return nodes.get(selector);
@@ -39,7 +39,7 @@ test('user profiles split administrators and students into independent scroll pa
 });
 
 test('metric values count from zero while preserving their displayed format',()=>{
-  const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^playSiteEntry\(\);\r?\n/gm,'').replace(/\r?\nbootCloud\(\);\s*$/,'');
+  const source=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^playSiteEntry\(\);\r?\n/gm,'').replace(/\r?\nbootCloud\(\);\s*$/,'');
   const frames=[],metric={dataset:{statValue:'77.4%'},textContent:'77.4%'};
   const context=vm.createContext({Date,Map,Set,Intl,Number,String,Math,JSON,DESKS:[],SLOTS:[],hourlyRange:hour=>`${hour}:00–${hour+1}:00`,localStorage:{getItem:()=> 'zh',setItem(){}},document:{querySelector(){return {innerHTML:'',dataset:{},classList:{}}},querySelectorAll:selector=>selector==='[data-stat-value]'?[metric]:[],addEventListener(){},body:{dataset:{}}},matchMedia:()=>({matches:false}),performance:{now:()=>0},requestAnimationFrame:callback=>frames.push(callback),setTimeout(){return 1},clearTimeout(){},setInterval(){return 1}});
   vm.runInContext(source,context);

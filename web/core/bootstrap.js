@@ -30,7 +30,7 @@ async function checkForUpdate(){
 async function start(){
   try{loadedVersion=await readVersion()}catch(error){console.warn('Using entry-page version',error.message)}
   document.documentElement.dataset.appVersion=loadedVersion;
-  const appUrl=new URL('../../app.js',import.meta.url);appUrl.searchParams.set('v',loadedVersion);
+  const appUrl=new URL('../app.js',import.meta.url);appUrl.searchParams.set('v',loadedVersion);
   try{await import(appUrl.href)}catch(error){
     const toast=document.querySelector('#toast');
     if(toast){toast.textContent='网页加载失败，请检查网络并刷新页面。';toast.className='show error'}

@@ -13,7 +13,7 @@
 | Three-column workspace | 左侧任务/资源入口，中间为工作内容，右侧为时间/Agent 上下文 | 桌面端为资源导航、预约/管理画布、预约或 Agent 上下文栏；窄屏折叠为单列 |
 | Today / Calendar card | 低对比背景、可扫读标题、事件状态先于装饰 | 设备平面图、时段选择、故障/占用/已选状态均由颜色、文字及 disabled 状态共同表达 |
 | Agent chat | 聊天作为正式工作区，有上下文和建议结果，而非浮层 | AI 页面改为对话面 + 真实预约/运营上下文栏；原有 Edge Function、确认步骤不变 |
-| Light / dark themes | 同一层级与几何，颜色由 token 切换 | `diorama-ui.css` 提供 light 与系统 dark token；不在业务组件散落主题颜色 |
+| Light / dark themes | 同一层级与几何，颜色由 token 切换 | `web/styles/diorama-ui.css` 提供 light 与系统 dark token；不在业务组件散落主题颜色 |
 | Component documentation | 把状态、token 与可访问性一起定义 | 设计文档记录状态、几何和响应式规则；原有 DOM ID/业务事件保持 |
 
 ## Typography、颜色和层级

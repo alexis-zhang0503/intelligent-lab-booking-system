@@ -25,7 +25,7 @@ test('backend failures have distinct actionable messages',()=>{
 function setup(){
  const nodes=new Map();const q=key=>{if(!nodes.has(key))nodes.set(key,{disabled:false,hidden:false,classList:{toggle(){}},querySelector(){return q('button')}});return nodes.get(key)};
  const context=vm.createContext({console,Date,Map,Set,Intl,Math,JSON,Error,Promise,localStorage:{getItem(){return 'zh'}},document:{querySelector:q,querySelectorAll(){return []},addEventListener(){}},setTimeout,clearTimeout,attendanceState,attendanceError,reservationStart});
- const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^playSiteEntry\(\);$/gm,'').replace(/^import .*;$/gm,'').replace(/bootCloud\(\);\s*$/,'');
+ const source=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8').replace(/^playSiteEntry\(\);$/gm,'').replace(/^import .*;$/gm,'').replace(/bootCloud\(\);\s*$/,'');
  vm.runInContext(source+`\nlet calls=0,refreshCalls=0;let pendingResolve;const supabase={rpc:async()=>{calls++;return new Promise(resolve=>pendingResolve=resolve)}};db={users:[{id:'u'}],session:'u',bookings:[{id:'r1',date:'2026-11-03',hour:10,status:'confirmed'}]};attendanceState=()=> 'check_in';me=()=>{};refreshCloud=async()=>{refreshCalls++;return true};toast=m=>globalThis.message=m;globalThis.api={saveAttendance,resolve:r=>pendingResolve(r),counts:()=>({calls,refreshCalls}),setRefresh:f=>refreshCloud=f,pending:()=>attendancePending.size};`,context);
  return context;
 }

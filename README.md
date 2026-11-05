@@ -1,53 +1,54 @@
-# 智能实验室预约系统
+# 智能实验室预约系统（Web）
 
-当前桌面端入口为 `desktop-c/`：C11 + Win32 原生界面 + WinHTTP，直接调用与网页相同的云端接口，无 HTML/WebView。旧 `qt-client/` 仅保留作历史离线演示。
-
-
-包含 GitHub Pages Web 客户端与 Windows Qt/C++ 客户端的课程作业项目。
+面向学生与管理员的实验室预约、设备管理和运营总览网页。主站由 GitHub Pages 部署，数据库与权限由 Supabase 提供。
 
 ## 功能
 
-- 学生公开注册；首个管理员由项目维护者开通，后续管理员使用现有管理员生成的一次性邀请码注册；
-- 40 台设备、08:00–17:00 共 9 个一小时时段；
-- 学生多设备、多时段预约与取消，冲突时段禁止重复预约；
-- 学生故障上报，管理员标记、恢复设备并注销学生账号；
-- 管理员查看用户、当前使用、每日及一周使用统计；
-- 选做的输入校验、累计实验时长；
-- 下载题目要求的 count.txt 与 error.txt。
+- 学生预约、取消预约、签到/签退与故障上报；
+- 管理员查看运营总览、维护设备与故障记录、管理用户；
+- 智能助手提供可用设备与时段建议，并在预约成功后给出确认反馈；
+- 管理员导出完整预约与故障处理记录；
+- 中英文界面切换、响应式布局和减少动态效果支持。
 
-## 两个客户端
+## 网页端结构
 
-- 根目录 Web 客户端：用于 GitHub Pages 展示与移动端访问；
-- [qt-client](qt-client/README.md)：Qt 6 Widgets/C++ Windows 图形界面；
-- [backend/supabase](backend/supabase/README.md)：供两个客户端共享的 Supabase 数据库、权限与原子预约契约。
+| 路径 | 作用 |
+| --- | --- |
+| `index.html` | GitHub Pages 入口，仅保留页面骨架与资源加载顺序。 |
+| `web/app.js` | 单页应用的业务渲染、交互与语言切换。 |
+| `web/core/` | Supabase、认证、预约时段和签到等业务规则。 |
+| `web/ui/` | 独立的界面动效。 |
+| `web/styles/` | 基础样式、界面层与助手样式，按 `index.html` 的顺序叠加。 |
+| `web/assets/` | 网页独用的本地视觉资源。 |
+| `design-system/tokens.css` | 全站共用设计 token。 |
+| `backend/supabase/` | 网页使用的数据库 schema、迁移与 Edge Function。 |
 
-管理员开通步骤见 [backend/supabase/ADMIN_ACCOUNT_RUNBOOK.md](backend/supabase/ADMIN_ACCOUNT_RUNBOOK.md)。
+根目录的 `favicon.svg` 仍保留为共享品牌资源；`desktop-c/` 与 `qt-client/` 为独立客户端，不属于网页端代码，整理网页时不应修改。
 
-## 数据范围
+## 本地预览与检查
 
-Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`backend/supabase/cloud-migration.sql` 和 `backend/supabase/admin-invite-migration.sql`，再在 **Authentication → Providers → Email** 关闭 **Confirm email**。之后学生注册、管理员权限、设备状态、预约冲突和实时刷新均以共享数据库为准。Qt 客户端目前保留离线本地演示模式，尚未接入云端。
+在仓库根目录启动静态服务：
 
-## V2.0 智能预约升级
+```powershell
+python -m http.server 4173
+```
 
-- 新增的 [V2 Schema 审计](docs/v2-schema-audit.md) 记录了当前表、RLS、索引、未知项和迁移前置条件；
-- [V2 迁移](backend/supabase/v2-0-migration.sql) 是增量 SQL：复用既有 `reservations`，新增受控状态、签到使用记录、开放规则、维护时段、Agent 审计和调度/指标 RPC；
-- 网页改用 V2 预约、取消、手动签到/签退和实时候选方案 API，并提供 DeepSeek 智能助手与只读管理员分析入口；
-- 部署前请依次阅读 [架构](docs/v2-architecture.md)、[API](docs/v2-api.md) 与 [部署步骤](docs/v2-deployment.md)。生产 Supabase 迁移、Edge Function 部署和 DeepSeek 密钥配置均未自动执行。
+打开 <http://localhost:4173>。提交网页改动前可运行：
 
-## 本地预览
+```powershell
+node --test (rg --files tests -g "*.test.mjs" -g "*.test.cjs")
+python -X utf8 -m unittest tests/test_shared_site_build.py
+```
 
-在项目根目录运行 python -m http.server 4173，然后访问 http://localhost:4173。
+## 数据与部署
 
-## GitHub Pages
+数据库初始化、管理员开通与 Supabase 安全约束见 [backend/supabase/README.md](backend/supabase/README.md) 和 [管理员开通说明](backend/supabase/ADMIN_ACCOUNT_RUNBOOK.md)。生产环境迁移、Edge Function 与 DeepSeek 密钥配置并不会随前端推送自动执行；发布前请核对 [部署步骤](docs/v2-deployment.md)。
 
-推送 main 分支后，GitHub Actions 会部署页面。首次部署后在仓库 Settings → Pages 查看公开链接。
+推送 `main` 后，GitHub Actions 会运行 `scripts/build_site.py`，为本地网页资源写入同一版本号并发布到 GitHub Pages。构建产物不包含测试、后端源码或桌面客户端目录。
 
-## 签到修复
+## 相关文档
 
-网页签到时间、异常提示和 Qt 本地签到实现已更新，部署所需的数据库步骤及验证范围见 [签到修复与上传说明](docs/attendance-fix.md)。只推送前端文件不会更新 Supabase 函数，必须按说明执行增量迁移。
-
-## 推荐桌面客户端：纯 C，共享网页界面
-
-[desktop-c](desktop-c/README.md) 使用 C11、Win32 原生控件和 WinHTTP；桌面 UI 与业务逻辑不依赖网页代码。账号和数据共用云端，登录后每 30 秒刷新；原生 UI 变化需发布新的 EXE，启动时检查版本并提示下载。`qt-client` 仅保留历史离线演示。
-
-上传和静态托管步骤见 [原生 C 部署说明](docs/c-desktop-native.md)。
+- [网页架构](docs/v2-architecture.md)
+- [网页 API 与数据契约](docs/v2-api.md)
+- [智能助手架构](docs/agent-v3-architecture.md)
+- [界面设计 token](docs/ui-design-tokens.md)

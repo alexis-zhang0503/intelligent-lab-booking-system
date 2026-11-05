@@ -28,7 +28,7 @@ These tests require an isolated Supabase staging project populated with two stud
 
 ## Local checks completed in this worktree
 
-- `node --check app.js` passed.
+- `node --check web/app.js` passed.
 - Local page load at `http://127.0.0.1:4174/` completed with no captured browser console errors.
 - Static migration checks confirmed all required V2 API/table contracts and rejected destructive reservation SQL patterns.
 - Qt `LabRepositoryCheck` built and passed: 1/1 tests.

@@ -9,7 +9,7 @@ class Clock extends Date{constructor(...args){super(...(args.length?args:[now]))
 function setup(){
  const nodes=new Map();const node=s=>{if(!nodes.has(s))nodes.set(s,{innerHTML:'',scrollTop:0,dataset:{},classList:{add(){},remove(){}},setAttribute(){},focus(){this.focused=true}});return nodes.get(s)};
  const ctx=vm.createContext({console,Date:Clock,Map,Set,Intl,Number,String,Math,JSON,localStorage:{getItem:()=> 'zh'},document:{querySelector:node,querySelectorAll:()=>[],addEventListener(){},body:{dataset:{}},activeElement:null},window:{addEventListener(){}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,supabase:{},DESKS:Array.from({length:40},(_,i)=>i+1),SLOTS:[8,9,10,11,12,13,14,15,16],hourlyRange:h=>`${h}:00–${h+1}:00`,hourToMinutes:h=>h*60,reservationStart,attendanceState:b=>attendanceState(b,now),playIntro(){}});
- vm.runInContext(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/\nbootCloud\(\);\s*$/,''),ctx);
+ vm.runInContext(fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/\nbootCloud\(\);\s*$/,''),ctx);
  const run=code=>vm.runInContext(code,ctx);
  run(`db={users:[{id:'s',name:'Student',role:'student',loginId:'B001'}],session:'s',devices:[],faults:[],bookings:[]};syncLanguage=()=>{};globalThis.make=(id,date,hour,status='confirmed',deskNo=23)=>({id,userId:'s',date,hour,status,deskNo});`);
  return {run,node};
@@ -45,7 +45,7 @@ test('personal lists share the order and removal, while full history still feeds
   assert.match(section,/class="personal-record-list" role="region"/);assert.match(section,/tabindex="0"/);
   assert.ok(section.indexOf('7号设备')<section.indexOf('8号设备'));assert.doesNotMatch(section,/40号设备/);
  }
- assert.match(html,/<span>已完成记录<\/span><b class="">1<\/b>/);assert.equal(run('db.bookings.length'),3);
+ assert.match(html,/<span>已完成记录<\/span><b class="" data-stat-value="1">1<\/b>/);assert.equal(run('db.bookings.length'),3);
 });
 test('automatic rerenders retain independent list scroll positions and keyboard focus',()=>{
  const {run,node}=setup();node('#personalUsageList').scrollTop=120;node('#personalBookingList').scrollTop=240;

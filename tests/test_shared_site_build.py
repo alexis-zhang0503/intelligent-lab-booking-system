@@ -26,6 +26,8 @@ class SharedSiteBuildTests(unittest.TestCase):
         self.assertIn('web/core/bootstrap.js?v=test-release-123', text)
         self.assertIn('data-app-version="test-release-123"', text)
         self.assertIn('id="updateNotice"', text)
+        self.assertIn("new URL('../app.js',import.meta.url)", (self.out / 'web' / 'core' / 'bootstrap.js').read_text())
+        self.assertTrue((self.out / 'web' / 'app.js').is_file())
     def test_local_assets_are_versioned_and_exist(self):
         text = (self.out / 'index.html').read_text()
         for ref in re.findall(r'(?:src|href)="([^"<>]+)"', text):
@@ -34,7 +36,7 @@ class SharedSiteBuildTests(unittest.TestCase):
             self.assertIn('?v=test-release-123', ref)
             self.assertTrue((self.out / ref.split('?')[0]).is_file(), ref)
     def test_shared_attendance_module_and_sdk_are_versioned(self):
-        self.assertIn('attendanceRules.js?v=test-release-123', (self.out / 'app.js').read_text())
+        self.assertIn('attendanceRules.js?v=test-release-123', (self.out / 'web' / 'app.js').read_text())
         self.assertIn('../vendor/supabase.js?v=test-release-123', (self.out / 'web/core/supabaseClient.js').read_text())
     def test_desktop_and_database_sources_are_not_public_site_assets(self):
         for path in ['desktop-c', 'qt-client', 'backend', 'tests', '.git', '.github']:

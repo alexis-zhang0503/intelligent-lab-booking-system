@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 
 function loadI18n(){
-  const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8')
+  const source=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
     .replace(/^import .*;\r?\n/gm,'')
     .replace(/^playSiteEntry\(\);\r?\n/gm,'')
     .replace(/\r?\nbootCloud\(\);\s*$/,'');

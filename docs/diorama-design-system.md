@@ -2,7 +2,7 @@
 
 ## Semantic tokens
 
-`diorama-ui.css` 定义以下 token，并为系统深色偏好提供等价值：
+`web/styles/diorama-ui.css` 定义以下 token，并为系统深色偏好提供等价值：
 
 - 表面：`--color-background`、`--color-surface`、`--color-surface-raised`、`--color-surface-hover`
 - 结构：`--color-border-subtle`、`--color-border-strong`
@@ -14,7 +14,7 @@
 
 ## 字体保留
 
-本次不替换项目既有的中英文字体、品牌标题字体或数据编号字体；`diorama-font-preservation.css` 只撤销本轮工作区样式可能造成的字体覆盖。Diorama 的借鉴范围限于布局、间距、层级和组件状态。
+本次不替换项目既有的中英文字体、品牌标题字体或数据编号字体；`web/styles/diorama-font-preservation.css` 只撤销本轮工作区样式可能造成的字体覆盖。Diorama 的借鉴范围限于布局、间距、层级和组件状态。
 
 ## Primitives 与状态
 
