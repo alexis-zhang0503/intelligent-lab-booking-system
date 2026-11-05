@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { bookingContext, resolveBookingPlanInput } from "./booking-request.mjs";
+import { conversationHistory } from "./conversation-history.mjs";
 
 type AgentType = "booking_planner" | "admin_analyst" | "fault_responder";
 type AgentRequest = {
@@ -11,6 +12,7 @@ type AgentRequest = {
   message?: string;
   language?: "zh" | "en";
   input?: Record<string, unknown>;
+  history?: unknown;
   confirmation?: { proposalId?: string; idempotencyKey?: string };
 };
 type AgentResponse = {
@@ -115,7 +117,7 @@ Deno.serve(async (request) => {
         method: "POST", signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model: "deepseek-chat", temperature: 0.1, response_format: { type: "json_object" }, messages: [
           { role: "system", content: `You are the intake step for a laboratory booking assistant. Today is ${shanghaiDate()} in Asia/Shanghai. Return one JSON object only: {"ready":boolean,"request":object|null,"message":string|null}. Use the user's message and, only when present, the explicitly selected booking context. Set ready=true only when date, an exact start hour, duration, and device count are all known; resolve relative dates to YYYY-MM-DD. When ready=false, request the missing details in one concise, helpful ${body.language === "zh" ? "Chinese" : "English"} sentence. Never check or mention availability, capacity, database fields, defaults, internal state, or an earlier time slot. Do not invent missing booking details.` },
-          { role: "user", content: JSON.stringify({ userMessage: body.message ?? "", selectedBooking: bookingContext(input) }) },
+          { role: "user", content: JSON.stringify({ history: conversationHistory(body.history), userMessage: body.message ?? "", selectedBooking: bookingContext(input) }) },
         ] }),
       });
       if (modelResponse.status === 402) return { error: { code: "DEEPSEEK_BALANCE_INSUFFICIENT", message: text(body.language, "DeepSeek API 额度不足，请充值后继续使用智能助手。", "Your DeepSeek API balance is insufficient. Top up to continue using the assistant."), status: 402 } };
