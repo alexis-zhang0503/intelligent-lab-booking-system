@@ -108,3 +108,11 @@ input,select,textarea{border-color:var(--color-border-subtle);border-radius:var(
 @media(max-width:1180px){.admin-metrics-layout{grid-template-columns:1fr}.admin-metric-tables{height:clamp(21rem,48vh,30rem)}.admin-export{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto auto;height:auto}.admin-export>div{grid-column:1/-1}.admin-export .eyebrow,.admin-export h2,.admin-export .helper{width:auto}.admin-export .wide{width:auto}.admin-export .wide[style]{margin-top:0!important}}
 @media(max-width:760px){.admin-metric-tables{height:auto;grid-template-columns:1fr}.admin-metric-table .table-wrap{max-height:20rem}.admin-record-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-record-search{grid-column:1/-1}.admin-record-toolbar .secondary{justify-self:start}.admin-export{grid-template-columns:1fr}.admin-export>div{grid-column:auto}}
 @media(max-width:480px){.admin-record-toolbar{grid-template-columns:1fr}.admin-record-search{grid-column:auto}.admin-record-toolbar .secondary{width:100%}.admin-metric-table-head{align-items:center}.admin-metric-table-head p{display:none}}
+
+/* Keep usage analysis wide; record exports belong beside the records they create. */
+.admin-metrics-panel{grid-column:1/-1}
+.admin-record-toolbar{grid-template-columns:repeat(3,minmax(0,1fr)) auto auto}
+.module-export-row{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3);margin:var(--ui-space-4) 0;padding:var(--ui-space-3);border:1px solid var(--color-border-subtle);border-radius:var(--ui-radius-md);background:var(--color-surface-raised)}
+.module-export-row>div{display:grid;gap:4px;min-width:0}.module-export-row b{font-size:.82rem}.module-export-row span{color:var(--color-text-secondary);font-size:.72rem}.module-export-row .secondary{flex:0 0 auto}
+@media(max-width:760px){.admin-record-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.module-export-row{align-items:flex-start;flex-direction:column}.module-export-row .secondary{width:100%}}
+@media(max-width:480px){.admin-record-toolbar{grid-template-columns:1fr}}
