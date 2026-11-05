@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { bookingContext, parseBookingDecision, resolveBookingPlanInput } from "../backend/supabase/functions/deepseek-booking-agent/booking-request.mjs";
 import { conversationHistory } from "../backend/supabase/functions/deepseek-booking-agent/conversation-history.mjs";
+import { explicitBookingRequest } from "../backend/supabase/functions/deepseek-booking-agent/explicit-booking-request.mjs";
 
 test("a default page state is not treated as a selected booking", () => {
   assert.equal(bookingContext({ date: "2026-11-05", startHours: [8], durationHours: 1, requiredDeviceCount: 1 }), null);
@@ -30,6 +31,10 @@ test("a complete booking request remains valid when the model omits ready", () =
 
 test("a fenced JSON decision is parsed before validation", () => {
   assert.deepEqual(parseBookingDecision('```json\n{"request":{"date":"2026-11-06","startHours":[14],"durationHours":2,"requiredDeviceCount":2}}\n```').request.startHours, [14]);
+});
+
+test("a complete Chinese request reaches scheduling even if the model decision is malformed", () => {
+  assert.deepEqual(explicitBookingRequest(["明天 14:00 开始，使用 2 小时，需要 2 台设备。"], "2026-11-05"), { date: "2026-11-06", startHours: [14], durationHours: 2, requiredDeviceCount: 2, preferredDevices: [] });
 });
 
 test("follow-up details retain the prior booking request for DeepSeek", () => {

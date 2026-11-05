@@ -76,7 +76,8 @@ test('administrator dashboard and agent use the V3 metric contract',()=>{
   assert.match(agent,/deepseekBookingDecision/);
   assert.match(agent,/selectedBooking: bookingContext\(input\)/);
   assert.match(agent,/parseBookingDecision\(content\)/);
-  assert.match(agent,/history: conversationHistory\(body\.history\)/);
+  assert.match(agent,/explicitBookingRequest/);
+  assert.match(agent,/const history = conversationHistory\(body\.history\)/);
   assert.match(agent,/p_request: decision\.planRequest/);
   assert.doesNotMatch(agent,/p_request: constraints/);
   assert.ok(agent.indexOf("deepseekBookingDecision()") < agent.indexOf('supabase.rpc("v3_plan_schedule"'));

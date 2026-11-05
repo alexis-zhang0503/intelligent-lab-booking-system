@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { bookingContext, parseBookingDecision, resolveBookingPlanInput } from "./booking-request.mjs";
 import { conversationHistory } from "./conversation-history.mjs";
+import { explicitBookingRequest } from "./explicit-booking-request.mjs";
 
 type AgentType = "booking_planner" | "admin_analyst" | "fault_responder";
 type AgentRequest = {
@@ -113,11 +114,12 @@ Deno.serve(async (request) => {
   const deepseekBookingDecision = async () => {
     if (!deepseekApiKey) return { error: { code: "DEEPSEEK_KEY_UNAVAILABLE", message: text(body.language, "智能助手暂不可用，请联系管理员配置 DeepSeek API。", "The assistant is unavailable. Ask an administrator to configure the DeepSeek API."), status: 503 } };
     try {
+      const history = conversationHistory(body.history);
       const modelResponse = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST", signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model: "deepseek-chat", temperature: 0.1, response_format: { type: "json_object" }, messages: [
           { role: "system", content: `You are the intake step for a laboratory booking assistant. Today is ${shanghaiDate()} in Asia/Shanghai. Return one JSON object only. When complete, it must be exactly {"ready":true,"request":{"date":"YYYY-MM-DD","startHours":[14],"durationHours":2,"requiredDeviceCount":2,"preferredDevices":[]},"message":null}; startHours must be an array of integers. When incomplete, it must be exactly {"ready":false,"request":null,"message":"one concise follow-up"}. Use the user's message and, only when present, the explicitly selected booking context. Set ready=true only when date, an exact start hour, duration, and device count are all known; resolve relative dates to YYYY-MM-DD. When ready=false, request the missing details in one concise, helpful ${body.language === "zh" ? "Chinese" : "English"} sentence. Never check or mention availability, capacity, database fields, defaults, internal state, or an earlier time slot. Do not invent missing booking details.` },
-          { role: "user", content: JSON.stringify({ history: conversationHistory(body.history), userMessage: body.message ?? "", selectedBooking: bookingContext(input) }) },
+          { role: "user", content: JSON.stringify({ history, userMessage: body.message ?? "", selectedBooking: bookingContext(input) }) },
         ] }),
       });
       if (modelResponse.status === 402) return { error: { code: "DEEPSEEK_BALANCE_INSUFFICIENT", message: text(body.language, "DeepSeek API 额度不足，请充值后继续使用智能助手。", "Your DeepSeek API balance is insufficient. Top up to continue using the assistant."), status: 402 } };
@@ -126,7 +128,7 @@ Deno.serve(async (request) => {
       const content = completion?.choices?.[0]?.message?.content;
       if (typeof content !== "string") return { error: { code: "DEEPSEEK_EMPTY_RESPONSE", message: text(body.language, "智能助手没有返回内容，请稍后重试。", "The assistant did not return a response. Please try again later."), status: 503 } };
       const decision = parseBookingDecision(content);
-      const planRequest = resolveBookingPlanInput(decision);
+      const planRequest = resolveBookingPlanInput(decision) ?? explicitBookingRequest([...history.filter(item => item.role === "user").map(item => item.message), body.message ?? ""], shanghaiDate());
       const message = typeof decision?.message === "string" ? decision.message.trim() : "";
       if (!planRequest && !message) return { error: { code: "DEEPSEEK_INVALID_RESPONSE", message: text(body.language, "智能助手没有理解这条需求，请换种说法试试。", "The assistant could not understand that request. Please try phrasing it differently."), status: 503 } };
       return { planRequest, message };
