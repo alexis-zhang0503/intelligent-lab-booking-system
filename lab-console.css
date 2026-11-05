@@ -1,0 +1,38 @@
+/* Light laboratory console: preserves the existing palette while sharpening hierarchy. */
+:root{--console-grid:color-mix(in srgb,var(--color-accent) 8%,transparent);--console-shadow:0 18px 42px rgb(33 35 40 / 6%);--console-shadow-hover:0 20px 44px rgb(33 35 40 / 10%)}
+html,body,.main,.auth{background:var(--color-background)}
+body{background-image:linear-gradient(var(--console-grid) 1px,transparent 1px),linear-gradient(90deg,var(--console-grid) 1px,transparent 1px);background-size:48px 48px;background-position:-1px -1px}
+body::before{position:fixed;inset:0;z-index:-1;background:radial-gradient(720px circle at 88% -8%,color-mix(in srgb,var(--color-accent-soft) 68%,transparent),transparent 62%);content:"";pointer-events:none}
+.side{background:color-mix(in srgb,var(--color-surface) 92%,transparent);box-shadow:12px 0 34px rgb(33 35 40 / 2%);backdrop-filter:blur(18px)}
+.logo{padding-bottom:28px;font-size:.96rem;letter-spacing:-.025em}.logo img{width:26px;height:26px}.nav-btn{position:relative;min-height:44px;border-radius:10px}.nav-btn.active{box-shadow:inset 2px 0 0 var(--color-accent);background:linear-gradient(90deg,var(--color-accent-soft),transparent)}
+.main{padding-top:36px}.main>header{margin-bottom:28px}.main>header h1{font-size:clamp(1.7rem,2.5vw,2.3rem);font-weight:700;letter-spacing:-.055em}
+
+/* The interface keeps names and controls, but removes secondary engineering prose. */
+#kicker,.eyebrow,.sub,.helper,.fault-form-intro,.reservation-guide,.agent-starters button>small,.issue-actions small,.issue-empty>span,.booking-copy>p,.device-overview p,.device-actions>p,.profile-hero .eyebrow,.admin-metric-table-head p,#inviteModal form>p{display:none!important}
+.auth-card form>p{display:none}.auth-card form{gap:14px}.auth-card form h2{margin-bottom:8px}.booking-intro{margin-bottom:20px}.booking-intro h2{font-size:clamp(1.8rem,3vw,2.7rem)}
+
+/* Measurement cards use a thin calibration rail, not decoration. */
+.stats{gap:12px;margin-bottom:18px}.stat,.panel{border-color:var(--color-border-subtle);box-shadow:var(--console-shadow)}
+.stat{position:relative;overflow:hidden;min-height:116px;padding:18px;background:color-mix(in srgb,var(--color-surface) 92%,var(--color-surface-raised))}.stat::before{position:absolute;top:0;left:18px;width:42px;height:2px;background:var(--color-accent);content:""}.stat:nth-child(3n) .stat::before,.stat:nth-child(3n)::before{background:var(--color-warning)}.stat:hover,.panel:hover{border-color:var(--color-border-strong);box-shadow:var(--console-shadow-hover);transform:translateY(-1px)}.stat span{font-size:.7rem;font-weight:620;letter-spacing:.035em}.stat b{margin-top:13px;font-size:clamp(1.8rem,2.8vw,2.5rem);font-variant-numeric:tabular-nums}
+.admin-overview-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.admin-overview-stats .stat:nth-child(3n+1){background:var(--color-surface)}
+
+.panel{border-radius:14px;background:color-mix(in srgb,var(--color-surface) 94%,transparent)}.panel,.stat{backdrop-filter:blur(12px)}
+.panel h2,.panel h3{font-weight:680;letter-spacing:-.03em}.section-head,.panel-head{align-items:center;margin-bottom:18px}.section-head>div,.panel-head>div{display:flex;align-items:center;gap:10px}.section-head>div h2,.panel-head>div h2{margin:0}
+.primary,.secondary,.outline{min-height:38px;border-radius:9px;font-weight:650}.primary{box-shadow:0 8px 18px color-mix(in srgb,var(--color-accent) 22%,transparent)}.primary:hover{box-shadow:0 12px 24px color-mix(in srgb,var(--color-accent) 28%,transparent)}
+input,select,textarea{min-height:40px;border-radius:9px;background:color-mix(in srgb,var(--color-surface) 94%,transparent)}
+
+/* The operations canvas is the focus, with controls held in a compact instrument tray. */
+.admin-metrics-panel{padding:22px}.admin-metrics-filters,.admin-record-toolbar{padding:12px;border:1px solid var(--color-border-subtle);border-radius:12px;background:var(--color-surface-raised)}
+.admin-metric-tables{gap:16px;margin-top:18px}.admin-metric-table{border:1px solid var(--color-border-subtle);border-radius:12px;background:var(--color-surface-raised)}.admin-metric-table-head{min-height:48px;padding:12px 14px;border-bottom:1px solid var(--color-border-subtle)}.admin-metric-table-head h3{font-size:.84rem}.admin-metric-table-head span,.module-summary .sub{display:inline-flex!important;margin:0;padding:4px 8px;border-radius:999px;color:var(--color-text-secondary);background:var(--color-surface-hover);font-family:var(--ui-font-data);font-size:.64rem;line-height:1.2}
+.table th{font-size:.65rem;letter-spacing:.035em}.table td{font-variant-numeric:tabular-nums}.table tbody tr:hover{background:color-mix(in srgb,var(--color-accent-soft) 48%,transparent)}
+.admin-records-overview{margin-top:22px}.module-summary{padding:18px 20px}.module-summary>div{display:flex;align-items:center;gap:10px}.module-summary h2{font-size:1rem}.module-content{padding:0 20px 20px}.module-export-row{margin:0 0 14px;padding:10px 0;border-bottom:1px solid var(--color-border-subtle)}.module-export-row>div>span{display:none}.module-export-row>div>b{font-size:.78rem}
+
+.booking{gap:16px}.lab-panel,.booking-flow,.device-plan,.device-actions{box-shadow:var(--console-shadow)}.lab-panel .desk,.device-plan .desk{border-radius:10px}.desk:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 9px 18px rgb(33 35 40 / 7%)}.legend{margin:0 0 14px}.lab-status{min-height:auto;padding:16px}.lab-status>p{display:none}.lab-status>b{font-size:2.65rem}.selection{border-left:2px solid var(--color-accent);border-radius:9px}
+
+.device-overview{border-radius:14px;box-shadow:var(--console-shadow)}.device-overview .eyebrow,.device-actions .eyebrow,.device-plan .eyebrow{display:none!important}.device-overview h2{font-size:1.8rem}.device-overview-metric{position:relative;padding-left:18px}.device-overview-metric::before{position:absolute;top:4px;bottom:4px;left:0;width:2px;background:var(--color-danger);content:""}.device-actions{display:grid;gap:10px}.device-actions h2{margin-bottom:6px}
+
+/* Records and assistant keep data visible while nonessential copy recedes. */
+.record{padding:13px 0}.record b{font-size:.82rem}.record small{font-size:.68rem}.issue-card{border-radius:12px}.issue-body .eyebrow{display:block!important;color:var(--color-text-tertiary)}.agent-brand,.agent-welcome>p{display:none}.agent-welcome{padding-top:12px}.agent-welcome h2{font-size:clamp(1.85rem,3vw,2.55rem)}.agent-composer{border-radius:12px;box-shadow:var(--console-shadow)}
+
+@media(max-width:900px){.admin-overview-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.main{padding-top:26px}.module-summary>div{align-items:flex-start;flex-direction:column;gap:6px}}
+@media(max-width:640px){body{background-size:34px 34px}.main{padding:22px 14px 40px}.main>header{margin-bottom:20px}.admin-overview-stats,.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stat{min-height:100px;padding:14px}.stat::before{left:14px}.stat b{font-size:1.7rem}.admin-metrics-panel{padding:14px}.module-summary,.module-content{padding-left:14px;padding-right:14px}.module-export-row{align-items:flex-start;gap:10px;flex-direction:column}.module-export-row .secondary{width:100%}}
