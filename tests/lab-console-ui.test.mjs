@@ -48,3 +48,15 @@ test('metric values count from zero while preserving their displayed format',()=
   frames.shift()(0);frames.shift()(700);
   assert.equal(metric.textContent,'77.4%');
 });
+
+test('metric values replay whenever the overview is shown again',()=>{
+  const source=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^playSiteEntry\(\);\r?\n/gm,'').replace(/\r?\nbootCloud\(\);\s*$/,'');
+  const frames=[],metric={dataset:{statValue:'21'},textContent:'21'};
+  const context=vm.createContext({Date,Map,Set,Intl,Number,String,Math,JSON,DESKS:[],SLOTS:[],hourlyRange:hour=>`${hour}:00–${hour+1}:00`,localStorage:{getItem:()=> 'zh',setItem(){}},document:{querySelector(){return {innerHTML:'',dataset:{},classList:{}}},querySelectorAll:selector=>selector==='[data-stat-value]'?[metric]:[],addEventListener(){},body:{dataset:{}}},matchMedia:()=>({matches:false}),performance:{now:()=>0},requestAnimationFrame:callback=>frames.push(callback),setTimeout(){return 1},clearTimeout(){},setInterval(){return 1}});
+  vm.runInContext(source,context);
+  vm.runInContext('animateStatValues()',context);
+  frames.shift()(0);frames.shift()(700);
+  vm.runInContext('animateStatValues()',context);
+  assert.equal(metric.textContent,'0');
+  assert.equal(frames.length,1);
+});
