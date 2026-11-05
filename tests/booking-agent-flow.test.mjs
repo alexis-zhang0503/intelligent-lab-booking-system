@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bookingContext, resolveBookingPlanInput } from "../backend/supabase/functions/deepseek-booking-agent/booking-request.mjs";
+import { bookingContext, parseBookingDecision, resolveBookingPlanInput } from "../backend/supabase/functions/deepseek-booking-agent/booking-request.mjs";
 import { conversationHistory } from "../backend/supabase/functions/deepseek-booking-agent/conversation-history.mjs";
 
 test("a default page state is not treated as a selected booking", () => {
@@ -22,6 +22,14 @@ test("a complete natural-language interpretation is safe to plan", () => {
 
 test("common model field aliases still become a valid booking plan", () => {
   assert.deepEqual(resolveBookingPlanInput({ ready: true, request: { date: "2026-11-06", startHour: "14", duration: "2", deviceCount: "2" } }), { date: "2026-11-06", startHours: [14], durationHours: 2, requiredDeviceCount: 2, preferredDevices: [] });
+});
+
+test("a complete booking request remains valid when the model omits ready", () => {
+  assert.deepEqual(resolveBookingPlanInput({ request: { date: "2026-11-06", startHours: [14], durationHours: 2, requiredDeviceCount: 2 } }), { date: "2026-11-06", startHours: [14], durationHours: 2, requiredDeviceCount: 2, preferredDevices: [] });
+});
+
+test("a fenced JSON decision is parsed before validation", () => {
+  assert.deepEqual(parseBookingDecision('```json\n{"request":{"date":"2026-11-06","startHours":[14],"durationHours":2,"requiredDeviceCount":2}}\n```').request.startHours, [14]);
 });
 
 test("follow-up details retain the prior booking request for DeepSeek", () => {

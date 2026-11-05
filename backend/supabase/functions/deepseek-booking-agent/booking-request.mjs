@@ -18,7 +18,7 @@ function integers(values, minimum, maximum) {
 }
 
 export function resolveBookingPlanInput(decision) {
-  if (!record(decision) || decision.ready !== true || !record(decision.request)) return null;
+  if (!record(decision) || decision.ready === false || !record(decision.request)) return null;
   const request = decision.request;
   const singleDate = date(request.date);
   const startDate = date(request.startDate) ?? singleDate;
@@ -30,6 +30,12 @@ export function resolveBookingPlanInput(decision) {
   const weekdays = request.weekdays == null ? undefined : integers(request.weekdays, 0, 6);
   if (!startDate || !endDate || endDate < startDate || !startHours || !durationHours || !requiredDeviceCount || !preferredDevices || (request.weekdays != null && !weekdays)) return null;
   return { ...(singleDate ? { date: singleDate } : { startDate, endDate }), startHours, durationHours, requiredDeviceCount, preferredDevices, ...(weekdays ? { weekdays } : {}) };
+}
+
+export function parseBookingDecision(content) {
+  if (typeof content !== "string") return null;
+  const json = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try { return JSON.parse(json); } catch { return null; }
 }
 
 export function bookingContext(input) {

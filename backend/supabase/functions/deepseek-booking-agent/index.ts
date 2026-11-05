@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { bookingContext, resolveBookingPlanInput } from "./booking-request.mjs";
+import { bookingContext, parseBookingDecision, resolveBookingPlanInput } from "./booking-request.mjs";
 import { conversationHistory } from "./conversation-history.mjs";
 
 type AgentType = "booking_planner" | "admin_analyst" | "fault_responder";
@@ -125,7 +125,7 @@ Deno.serve(async (request) => {
       const completion = await modelResponse.json();
       const content = completion?.choices?.[0]?.message?.content;
       if (typeof content !== "string") return { error: { code: "DEEPSEEK_EMPTY_RESPONSE", message: text(body.language, "智能助手没有返回内容，请稍后重试。", "The assistant did not return a response. Please try again later."), status: 503 } };
-      const decision = JSON.parse(content);
+      const decision = parseBookingDecision(content);
       const planRequest = resolveBookingPlanInput(decision);
       const message = typeof decision?.message === "string" ? decision.message.trim() : "";
       if (!planRequest && !message) return { error: { code: "DEEPSEEK_INVALID_RESPONSE", message: text(body.language, "智能助手没有理解这条需求，请换种说法试试。", "The assistant could not understand that request. Please try phrasing it differently."), status: 503 } };
