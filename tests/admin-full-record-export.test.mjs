@@ -47,6 +47,7 @@ test('overview keeps usage metrics full width and places exports in their record
   assert.doesNotMatch(html,/admin-export/);
   assert.match(html,/data-export-reservations/);
   assert.match(html,/data-export-issues/);
+  assert.doesNotMatch(html,/module-summary"><div><h2>[^<]+<\/h2><p class="sub">/);
 });
 
 test('reservation export includes records outside today',()=>{

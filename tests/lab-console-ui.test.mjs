@@ -15,6 +15,7 @@ test('secondary engineering copy is visually removed without suppressing control
   assert.match(css,/#kicker,.eyebrow,.sub,.helper/);
   assert.match(css,/\.agent-starters button>small/);
   assert.match(css,/\.primary,.secondary,.outline/);
+  assert.doesNotMatch(css,/module-summary \.sub/);
 });
 
 test('user profiles split administrators and students into independent scroll panels',()=>{
