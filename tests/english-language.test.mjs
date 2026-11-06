@@ -19,7 +19,10 @@ function loadI18n(){
     document:{querySelector:query,querySelectorAll(){return []},addEventListener(){},body:{dataset:{}}},
     setTimeout(){return 1}, clearTimeout(){}, setInterval(){return 1}
   });
-  vm.runInContext(`${source}\nglobalThis.i18n={translate:s=>{language='en';return tr(s)},minutes,candidate:items=>{language='en';return candidateMarkup(items)},loading:async()=>{language='en';let resolve,calls=0;supabase={rpc:async()=>calls++?{data:[],error:null}:new Promise(done=>resolve=done)};let target=q('#scheduleSuggestions');target.innerHTML='';let pending=loadScheduleCandidates(),markup=target.innerHTML;resolve({data:[],error:null});await pending;return markup}};`,context);
+  vm.runInContext(`${source}\nglobalThis.i18n={translate:s=>{language='en';return tr(s)},minutes,candidate:items=>{language='en';return candidateMarkup(items)},loading:async()=>{language='en';let resolve,calls=0;supabase={rpc:async()=>calls++?{data:[],error:null}:new Promise(done=>resolve=done)};let target=q('#scheduleSuggestions');target.innerHTML='';let pending=loadScheduleCandidates(),markup=target.innerHTML;resolve({data:[],error:null});await pending;return markup},
+    switchText:text=>{const node={nodeValue:text};return ['zh','en','zh'].map(next=>{language=next;translateNode(node);return node.nodeValue})},
+    usage:()=>{language='en';usageControls=()=>'';return myUsageRecords([{deskNo:1,hour:9,date:'2026-11-06',status:'confirmed'}])}
+  };`,context);
   return context.i18n;
 }
 
@@ -54,4 +57,14 @@ test('asynchronously inserted recommendations render in English',async()=>{
   assert.equal(await i18n.loading(),'<p class="sub">Calculating live options…</p>');
   assert.doesNotMatch(i18n.candidate(),/\p{Script=Han}/u);
   assert.doesNotMatch(i18n.candidate([{start_hour:8,device_numbers:[1],candidate_rank:1}]),/\p{Script=Han}/u);
+});
+
+test('switching languages restores the original label when English translations coincide',()=>{
+  assert.deepEqual(Array.from(loadI18n().switchText('智能助手')),['智能助手','AI Assistant','智能助手']);
+});
+
+test('personal usage combines a localized date and status',()=>{
+  const html=loadI18n().usage();
+  assert.match(html,/Nov 6 · Confirmed/);
+  assert.doesNotMatch(html,/\p{Script=Han}/u);
 });

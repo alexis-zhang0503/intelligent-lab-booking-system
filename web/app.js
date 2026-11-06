@@ -35,8 +35,17 @@ Object.assign(EN,{"展开记录":"Expand records","收起记录":"Collapse recor
 Object.assign(EN,{"导出完整预约记录":"Export complete reservation records","导出完整故障记录":"Export complete issue records","完整故障记录":"Complete issue records","导出全部预约状态与提交时间。":"Export every reservation status and submission time.","导出故障现象、处理状态与维修说明。":"Export issue symptoms, statuses and repair notes."});
 Object.assign(EN,{"实际使用率":"Actual usage rate","预约与使用率差异":"Reservation-to-usage gap","爽约率":"No-show rate","取消率":"Cancellation rate","记录完整率":"Record completeness","实验室使用情况":"Laboratory usage","按时间范围和设备查看使用情况。":"View usage by date range and device.","刷新数据":"Refresh data","开始日期":"Start date","结束日期":"End date","全部设备":"All devices","查询":"Search","文件导出":"File export","下载运营记录":"Download operations records","导出今日预约和故障记录。":"Export today's reservations and issue records.","今日预约统计":"Today's reservation statistics","按时段汇总预约情况":"Reservations by time slot","故障记录":"Issue records","导出全部故障处理记录":"Export all issue-resolution records","预约与故障记录":"Reservations and issue records","查看完整记录并处理需要关注的事项。":"Review complete records and handle items that need attention.","正在加载使用情况…":"Loading usage data…","暂无设备数据":"No device data","暂无时段数据":"No time-slot data","每台设备的利用":"Usage by device","使用时长、可用时长与利用率":"Used time, available time and utilization rate","使用时长":"Used time","可用时长":"Available time","利用率":"Utilization rate","每个时间段的利用":"Usage by time slot","按预约时段汇总":"Summarised by reserved time slot","时间段":"Time slot","未解决故障":"Unresolved issues","今日预约管理":"Today's reservation management","正在计算实时方案…":"Calculating live options…","故障提案生成失败":"Failed to create the issue proposal","故障提案执行失败":"Failed to execute the issue proposal","至少 6 个字符 / At least 6 characters":"At least 6 characters","新版本已发布，请刷新以更新界面。":"A new version is available. Refresh to update the interface.","更新界面":"Update interface"});
 let adminModuleOpen={reservations:false,faults:false};
+Object.assign(EN,{
+  "语言":"Language","南邮实验室预约":"NJUPT Lab Reservation","管理员邀请":"Administrator invitation",
+  "至少 6 个字符":"At least 6 characters",
+  "故障现象或原因（选填）":"Fault symptom or cause (optional)","处理说明（选填）":"Repair note (optional)",
+  "故障说明可不填写，填写时最多 120 个字符。":"The fault description is optional and may contain up to 120 characters.",
+  "处理说明可不填写，填写时最多 120 个字符。":"The repair note is optional and may contain up to 120 characters.",
+  "例如：确认设备无法正常使用，暂停新预约":"For example: the device is unusable, so pause new reservations",
+  "新版本已发布，请刷新以更新界面。":"A new version is available. Refresh to update.","更新界面":"Refresh",
+});
 const ZH=Object.fromEntries(Object.entries(EN).map(([zh,en])=>[en,zh]));
-let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9, bookingRequestKey=null, scheduleCandidates=[], adminMetrics=null, adminMetricsQuery={startDate:null,endDate:null,deviceNumber:null}, agentStateOwner=null, agentResponse=null, agentSessions={booking_planner:null,admin_analyst:null,fault_responder:null}, agentConversations={}, agentSubmitting=false, faultImpactPlan=null, faultResponseMetrics=null;
+let language=localStorage.getItem(LANGKEY)||(globalThis.navigator?.language?.toLowerCase().startsWith("zh")?"zh":"en"), db={users:[],devices:[],bookings:[],faults:[],session:null}, page="dashboard", date=today(), hours=new Set([8]), desks=new Set(), startHour=8, endHour=9, bookingRequestKey=null, scheduleCandidates=[], adminMetrics=null, adminMetricsQuery={startDate:null,endDate:null,deviceNumber:null}, agentStateOwner=null, agentResponse=null, agentSessions={booking_planner:null,admin_analyst:null,fault_responder:null}, agentConversations={}, agentSubmitting=false, faultImpactPlan=null, faultResponseMetrics=null;
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
 function today(n=0){return new Date(Date.now()+n*86400000).toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"})}
 function user(){return db.users.find(x=>x.id===db.session)} function admin(){return user()?.role==="admin"}
@@ -61,8 +70,40 @@ function slotsLabel(count){return language==="en"?`${count} reservation slot${co
 function deviceLabel(number){return language==="en"?`Device ${String(number).padStart(2,"0")}`:`${Number(number)}号设备`}
 function systemFaultText(text){return tr(text||"未填写故障说明")}
 function toast(m,type=""){let e=q("#toast");e.textContent=tr(m);e.className="show "+type;clearTimeout(toast.t);toast.t=setTimeout(()=>e.className="",2500)}
-function translateNode(node){let raw=node.nodeValue,trim=raw.trim();if(!trim)return;let symbol=trim.match(/^([*#!])\s+/),value=symbol?`${symbol[1]} ${tr(trim.slice(symbol[0].length))}`:tr(trim);if(value!==trim)node.nodeValue=raw.replace(trim,value)}
-function syncLanguage(){document.documentElement.lang=language==="en"?"en":"zh-CN";document.title=tr("智能实验室预约系统");let walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);for(let node;node=walker.nextNode();)if(!node.parentElement?.closest("script,style"))translateNode(node);qa("[placeholder],[aria-label]").forEach(el=>{for(let name of ["placeholder","aria-label"]){let value=el.getAttribute(name);if(value)el.setAttribute(name,tr(value))}});qa("[data-language]").forEach(button=>button.classList.toggle("active",button.dataset.language===language))}
+const localizedText=new WeakMap(),localizedAttributes=new WeakMap();
+function translateNode(node){
+  const current=node.nodeValue,prior=localizedText.get(node);
+  const raw=prior?.rendered===current?prior.source:current,trim=raw.trim();
+  if(!trim)return;
+  const symbol=trim.match(/^([*#!])\s+/);
+  const value=symbol?`${symbol[1]} ${tr(trim.slice(symbol[0].length))}`:tr(trim);
+  const rendered=raw.replace(trim,value);
+  if(rendered!==current)node.nodeValue=rendered;
+  if(rendered!==raw||prior)localizedText.set(node,{source:raw,rendered});
+}
+function syncLanguage(){
+  document.documentElement.lang=language==="en"?"en":"zh-CN";
+  document.title=tr("智能实验室预约系统");
+  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+  for(let node;node=walker.nextNode();)if(!node.parentElement?.closest("script,style,.agent-bubble"))translateNode(node);
+  qa("[placeholder],[aria-label],[alt]").forEach(el=>{
+    const attributes=localizedAttributes.get(el)||{};
+    for(const name of ["placeholder","aria-label","alt"]){
+      const current=el.getAttribute(name);
+      if(!current)continue;
+      const prior=attributes[name],source=prior?.rendered===current?prior.source:current;
+      const rendered=tr(source);
+      if(rendered!==current)el.setAttribute(name,rendered);
+      attributes[name]={source,rendered};
+    }
+    localizedAttributes.set(el,attributes);
+  });
+  qa("[data-language]").forEach(button=>{
+    const selected=button.dataset.language===language;
+    button.classList.toggle("active",selected);
+    button.setAttribute("aria-pressed",String(selected));
+  });
+}
 function setLanguage(next){language=next;localStorage.setItem(LANGKEY,language);render()}
 /** Returns the exact local end instant for a one-hour reservation. */
 function bookingEnd(booking){return reservationStart(booking)+3600000}
@@ -167,7 +208,7 @@ function usageControls(booking){
   if(state==="check_in")return `<button class="secondary small-btn" data-check-in="${booking.id}" ${pending?"disabled":""}>${tr("手动签到")}</button>`;
   return state==="early"?`<span class="tag">${language==="en"?"Not started (CST)":"尚未开始（北京时间）"}</span>`:state==="expired"?`<span class="tag">${language==="en"?"Check-in closed":"签到已结束"}</span>`:"";
 }
-function myUsageRecords(bookings){return bookings.length?`<div class="records">${bookings.map(booking=>`<div class="record"><div><b>${deviceLabel(booking.deskNo)} · ${fh(booking.hour)}</b><small>${fd(booking.date)} · ${reservationStatus(booking.status)}</small></div><div>${usageControls(booking)}</div></div>`).join("")}</div>`:`<p class="empty">暂无记录。</p>`}
+function myUsageRecords(bookings){return bookings.length?`<div class="records">${bookings.map(booking=>`<div class="record"><div><b>${deviceLabel(booking.deskNo)} · ${fh(booking.hour)}</b><small>${fd(booking.date)} · ${esc(tr(reservationStatus(booking.status)))}</small></div><div>${usageControls(booking)}</div></div>`).join("")}</div>`:`<p class="empty">暂无记录。</p>`}
 /** Keep actionable attendance first; archive old rows from personal lists without losing statistics. */
 function personalBookingPriority(booking,now=Date.now()){
   if(booking.status==="in_use"&&!booking.usage?.checked_out_at)return 0;
