@@ -98,3 +98,20 @@ test("identical device assignments are offered as a single option", async () => 
   const result = await f.run({ message: "明天9点约一台设备" });
   assert.equal(result.candidates.length, 1);
 });
+
+test("a student fault request produces a review card without any booking or write call", async () => {
+  const f = fixture([search("report", { deviceNumber: 1, description: "显示器无信号" }, "prepare_fault_report")]);
+  const result = await f.run({ message: "1号设备显示器没信号，帮我标记故障" });
+  assert.deepEqual(result.faultReport, { deviceNumber: 1, description: "显示器无信号" });
+  assert.equal(result.report, "ready");
+  assert.equal(result.candidates.length, 0);
+  assert.equal(f.queries.length, 0);
+});
+
+test("an invalid device asks for a concrete correction and produces no card", async () => {
+  const f = fixture([search("report", { deviceNumber: 41 }, "prepare_fault_report")]);
+  const result = await f.run({ message: "帮我标记41号设备故障" });
+  assert.equal(result.report, "needs_user");
+  assert.match(result.message, /1.*40/);
+  assert.equal(result.faultReport, undefined);
+});

@@ -40,3 +40,33 @@ test('a follow-up network error preserves the successfully submitted fault',asyn
  supabase.from=()=>({insert(){return this},select(){return this},single:async()=>({data:{id:'issue',reporter_id:'student',description:'Monitor has no signal',status:'faulty',created_at:'2026-11-03T01:00:00Z'},error:null})})`);
  await run('submitCloudIssue({preventDefault(){}})');assert.equal(run('db.devices[0].status'),'faulty');assert.equal(run('db.faults.length'),1);assert.match(run('lastToast.text'),/设备已停止预约/);
 });
+
+test('AI fault card opens an editable form and writes only when the student submits',async()=>{
+ const {run,node}=setup();
+ run(`db.devices=[{number:23,status:'available'}];render=()=>{};refreshCloud=async()=>false;
+ agentResponse={facts:{faultReport:{deviceNumber:23,description:'显示器无信号'}}};
+ let writes=0;
+ supabase.from=table=>({insert(payload){writes++;globalThis.sentReport=payload;return this},select(){return this},single:async()=>({data:{id:'ai-report',reporter_id:'student',description:'屏幕偶尔黑屏',status:'faulty'},error:null})});`);
+ assert.match(run('agentActionMarkup(agentResponse,false)'),/data-agent-fault-report/);
+ assert.doesNotMatch(run('agentActionMarkup(agentResponse,true)'),/data-agent-fault-report/);
+ run('reviewAgentFaultReport()');
+ assert.equal(node('#faultDesk').value,'23');
+ assert.equal(node('#faultText').value,'显示器无信号');
+ assert.equal(run('writes'),0);
+ node('#faultText').value='屏幕偶尔黑屏';
+ await run('submitCloudIssue({preventDefault(){}})');
+ assert.equal(run('writes'),1);
+ assert.equal(run('sentReport.reporter_id'),'student');
+ assert.equal(run('sentReport.description'),'屏幕偶尔黑屏');
+ assert.equal(run('db.devices[0].status'),'faulty');
+ assert.equal(run('agentResponse'),null);
+ assert.match(run('agentConversation("booking_planner").at(-1).message'),/已上报 23 号设备/);
+});
+
+test('a fault draft from another account cannot be submitted',async()=>{
+ const {run,node}=setup();
+ node('#faultModal').dataset.agentOwner='previous-student';
+ run(`let writes=0;supabase.from=()=>{writes++;throw new Error('unexpected write')};`);
+ await run('submitCloudIssue({preventDefault(){}})');
+ assert.equal(run('writes'),0);
+});

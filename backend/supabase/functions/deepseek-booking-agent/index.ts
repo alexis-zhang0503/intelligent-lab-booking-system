@@ -33,7 +33,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 const agentToolWhitelist: Record<AgentType, readonly string[]> = {
-  booking_planner: ["v3_plan_schedule", "v3_create_booking_proposal", "v3_create_reservation_plan"],
+  booking_planner: ["v3_plan_schedule", "v3_create_booking_proposal", "v3_create_reservation_plan", "prepare_fault_report"],
   admin_analyst: ["v3_admin_usage_metrics", "v2_fault_response_metrics", "prepare_lab_action"],
   fault_responder: ["v2_fault_impact_analysis", "v3_create_fault_proposal", "v3_execute_agent_proposal"],
 };
@@ -205,7 +205,7 @@ Deno.serve(async (request) => {
       }
       facts = turn.context
         ? { schedule: { candidates: turn.candidates, failures: turn.failures }, timezone: "Asia/Shanghai", report: turn.report }
-        : { guidance: true, report: turn.report };
+        : { guidance: true, report: turn.report, ...(turn.faultReport ? { faultReport: turn.faultReport } : {}) };
       const payload = response("suggested", facts, turn.message, proposals);
       await audit(payload);
       return json(payload);

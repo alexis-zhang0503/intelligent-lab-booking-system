@@ -32,7 +32,7 @@ test('no selected device cannot accidentally report device 01',()=>{
 });
 test('assistant heading displays the generic name in Chinese and English',()=>{
   const {run}=setup();run(`globalThis.heading='';head=(kicker,title)=>heading=title;agentPage()`);
-  assert.equal(run('heading'),'预约助手');run(`language='en'`);assert.equal(run('tr(heading)'),'Booking assistant');
+  assert.equal(run('heading'),'AI 助手');run(`language='en'`);assert.equal(run('tr(heading)'),'AI Assistant');
 });
 test('assistant renders the model reply without raw database details',()=>{
   const {run,node}=setup();run(`language='en';agentResponse={message:'A recommendation based on live database facts is ready',facts:{schedule:{failures:[{date:'2026-11-04',hour:8,reason:'slot_has_started'}],timezone:'Asia/Shanghai',contract:'internal'}},proposals:[]};agentPage()`);

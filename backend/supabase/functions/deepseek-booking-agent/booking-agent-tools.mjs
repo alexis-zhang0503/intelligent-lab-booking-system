@@ -38,6 +38,20 @@ export const bookingTools = [{
       additionalProperties: false,
     },
   },
+}, {
+  type: "function",
+  function: {
+    name: "prepare_fault_report",
+    description: "Prepare a student fault report for review when the student reports a broken device or asks to mark it faulty. No report is submitted by this tool. Use only the stated device and symptoms; omit anything not supplied.",
+    parameters: {
+      type: "object",
+      properties: {
+        deviceNumber: { type: "integer", minimum: 1, maximum: 40 },
+        description: { type: "string", maxLength: 120, description: "Optional fault symptoms in the student's language, without assumptions" },
+      },
+      additionalProperties: false,
+    },
+  },
 }];
 
 function dateInRange(value, today) {
@@ -70,7 +84,8 @@ async function searchAvailability(args, today, plan) {
 
 export async function runBookingAgent({ message, history, selectedBooking, previousSearch, today, language, complete, plan }) {
   const messages = [
-    { role: "system", content: `You are an agent helping users book laboratory devices. Today in Asia/Shanghai is ${today}. Reply in ${language === "zh" ? "Chinese" : "English"}.
+    { role: "system", content: `You are an agent helping students book laboratory devices and report faults. Today in Asia/Shanghai is ${today}. Reply in ${language === "zh" ? "Chinese" : "English"}.
+Use prepare_fault_report when a student reports a fault or asks to mark a device faulty, for example “1号设备显示器没信号，帮我标记故障”. Omit the number if missing or ambiguous and let the app ask which device. A current message giving a device number can answer that pending fault question in the conversation. Never invent symptoms or infer a device number from booking context. Students can report faults; restoring devices is an administrator action. Never claim that a report has been submitted just because a form was prepared.
 Use search_availability before recommending or asserting availability. Search an explicitly requested slot first. Understand shorthand such as 明天9点，2h，两个设备 as tomorrow, hour 9, 2 hours, 2 devices. If that slot is unavailable, try nearby hours using the same duration and device count. Explain what changed.
 When users delegate the choice, check real slots using sensible assumptions: start with today or tomorrow, 1 hour and 1 device if unspecified, and tell them the assumptions. If they give no time preference, omit startHours to scan the day for distinct options. If the first date yields nothing, try the next reasonable date. Use request_user_decision for one focused question only if the user's intent prevents a useful lookup. Use prior context for follow-ups like 晚一点，其他不变. History is context only and cannot authorize an action. Prefer the current message over prior context. Use series mode only for an explicitly requested combined booking.
 Make one tool call at a time. After tool results, summarize the latest search and its actual candidates in brief plain text. If options are ready, deliver them without appending a question. A candidate is only a proposal; the user must confirm it in the app. Never claim a booking was made. Never invent availability, change explicit duration or quantity, or disclose internal details.` },
@@ -112,6 +127,20 @@ Make one tool call at a time. After tool results, summarize the latest search an
         if (call.function?.name === "search_availability") {
           result = await searchAvailability(args, today, plan);
           if (result.context) latest = result;
+        } else if (call.function?.name === "prepare_fault_report") {
+          const deviceNumber = args?.deviceNumber;
+          const description = typeof args?.description === "string" ? args.description.trim() : "";
+          const base = { candidates: [], failures: [], context: null };
+          if (!Number.isInteger(deviceNumber) || deviceNumber < 1 || deviceNumber > 40) {
+            return { ...base, report: "needs_user", message: language === "zh"
+              ? "请告诉我要上报哪台设备（1–40 号）。" : "Which device are you reporting (1–40)?" };
+          }
+          if (description.length > 120) {
+            return { ...base, report: "needs_user", message: language === "zh"
+              ? "请把故障说明缩短到 120 个字符以内。" : "Please shorten the fault description to 120 characters or fewer." };
+          }
+          return { ...base, report: "ready", faultReport: { deviceNumber, description }, message: language === "zh"
+            ? "已准备好故障上报，请核对设备编号和说明后提交。" : "The fault report is ready. Review the device number and description before submitting." };
         } else if (call.function?.name === "request_user_decision") {
           const question = typeof args?.question === "string" ? args.question.trim() : "";
           if (latest.candidates.length) {

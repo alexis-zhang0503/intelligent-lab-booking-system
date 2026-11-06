@@ -40,7 +40,7 @@ let language=localStorage.getItem(LANGKEY)||"en", db={users:[],devices:[],bookin
 const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
 function today(n=0){return new Date(Date.now()+n*86400000).toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"})}
 function user(){return db.users.find(x=>x.id===db.session)} function admin(){return user()?.role==="admin"}
-function syncAgentStateOwner(ownerId){let next=switchAgentOwner({ownerId:agentStateOwner,sessions:agentSessions,conversations:agentConversations,response:agentResponse,submitting:agentSubmitting},ownerId);agentStateOwner=next.ownerId;agentSessions=next.sessions;agentConversations=next.conversations;agentResponse=next.response;agentSubmitting=next.submitting}
+function syncAgentStateOwner(ownerId){let next=switchAgentOwner({ownerId:agentStateOwner,sessions:agentSessions,conversations:agentConversations,response:agentResponse,submitting:agentSubmitting},ownerId);if(agentStateOwner!==next.ownerId){let modal=q("#faultModal");if(modal?.dataset?.agentOwner){delete modal.dataset.agentOwner;q("#faultForm").reset();if(modal.open)modal.close()}}agentStateOwner=next.ownerId;agentSessions=next.sessions;agentConversations=next.conversations;agentResponse=next.response;agentSubmitting=next.submitting}
 function id(p){return p+"-"+Date.now()+"-"+Math.random().toString(16).slice(2)}
 function esc(x){return String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function tr(s){return language==="en"?(EN[s]||s):(ZH[s]||s)}
@@ -291,7 +291,18 @@ async function executeFaultProposal(actionType,issueId,note){
   if(confirmation.error||confirmation.data?.outcome!=="confirmed")throw new Error(confirmation.error?.message||confirmation.data?.errors?.[0]?.message||"故障提案执行失败")
 }
 async function executeFaultIsolation(event){event.preventDefault();if(!faultImpactPlan)return;let note=q("#faultIsolationNote").value.trim(),button=q("#confirmFaultIsolation");if(!note){q("#faultIsolationNote").focus();return}button.disabled=true;try{await executeFaultProposal("isolate_fault",faultImpactPlan.issue_id,note)}catch(error){button.disabled=false;toast(cloudError(error),"error");return}button.disabled=false;q("#faultPlanModal").close();faultImpactPlan=null;faultResponseMetrics=null;toast("故障处置已执行。");await refreshCloud(false);faults()}
-function openModal(selectedDesk){q("#faultDesk").innerHTML=DESKS.map(n=>`<option value="${n}">${deviceLabel(n)}</option>`).join("");if(Number.isInteger(selectedDesk))q("#faultDesk").value=String(selectedDesk);q("#faultModal").showModal();bindFaultForm();syncLanguage()}
+function openModal(selectedDesk,agentDescription){
+  const modal=q("#faultModal");
+  if(modal.dataset.agentOwner)q("#faultForm").reset();
+  delete modal.dataset.agentOwner;
+  q("#faultDesk").innerHTML=DESKS.map(n=>`<option value="${n}">${deviceLabel(n)}</option>`).join("");
+  if(Number.isInteger(selectedDesk))q("#faultDesk").value=String(selectedDesk);
+  if(typeof agentDescription==="string"){
+    modal.dataset.agentOwner=db.session;
+    q("#faultText").value=agentDescription;
+  }
+  modal.showModal();bindFaultForm();syncLanguage();
+}
 function bindAdminModuleToggles(){
   for(let [key,id] of [["reservations","deviceReservations"],["faults","deviceFaults"]]){
     let module=q("#"+id);if(!module)continue;
@@ -465,12 +476,21 @@ const agentExportLabels={reservations:"reservations.txt",issues:"issues.txt"};
 function agentActionMarkup(response,administrator){
   const proposals=response?.proposals||[];
   const bookingMarkup=agentProposalMarkup(proposals.filter(item=>item.actionType!=="complete_fault_repair"));
-  if(!administrator)return bookingMarkup;
+  if(!administrator){
+    const report=response?.facts?.faultReport;
+    if(!report)return bookingMarkup;
+    return bookingMarkup+`<div class="agent-options"><article class="agent-option"><b>${esc(deviceLabel(report.deviceNumber))} · ${agentCopy("故障上报","Fault report")}</b><small>${esc(systemFaultText(report.description))}</small><button type="button" class="secondary small-btn" data-agent-fault-report>${agentCopy("核对并上报","Review and report")}</button></article></div>`;
+  }
   const repair=proposals.filter(item=>item.actionType==="complete_fault_repair").map(item=>
     `<article class="agent-option"><b>${esc(deviceLabel(item.deviceNumber))} · ${agentCopy("标记为已修复","Mark as repaired")}</b><button type="button" class="secondary small-btn" data-confirm-proposal="${esc(item.proposalId)}">${agentCopy("确认修复","Confirm repair")}</button></article>`).join("");
   const exports=(response?.facts?.exports||[]).filter(key=>Object.hasOwn(agentExportLabels,key)).map(key=>
     `<article class="agent-option"><b>${agentExportLabels[key]}</b><button type="button" class="secondary small-btn" data-agent-export="${key}">${agentCopy("下载 TXT","Download TXT")}</button></article>`).join("");
   return bookingMarkup+((repair||exports)?`<div class="agent-options">${repair}${exports}</div>`:"");
+}
+function reviewAgentFaultReport(){
+  const report=agentResponse?.facts?.faultReport;
+  if(!db.session||admin()||agentSubmitting||!report||!DESKS.includes(report.deviceNumber)||typeof report.description!=="string")return;
+  openModal(report.deviceNumber,report.description);
 }
 async function downloadAgentExport(key){
   if(!admin()||!Object.hasOwn(agentExportLabels,key))return;
@@ -481,7 +501,7 @@ async function downloadAgentExport(key){
   }catch(error){toast(cloudError(error),"error")}
 }
 function agentProposalMarkup(proposals){return proposals?.length?`<div class="agent-options">${proposals.map((proposal,index)=>{let candidate=proposal.candidate||{},items=candidate.items||[],summary=items.slice(0,3).map(item=>`${item.reservation_date} · ${fh(item.start_hour)} · ${(item.device_numbers||[]).map(deviceLabel).join(" ")}`).join("<br>");return`<article class="agent-option"><span>${agentCopy(`方案 ${index+1}`,`Option ${index+1}`)}</span><b>${summary||agentCopy("已为你准备好预约方案","Your reservation option is ready")}</b><button class="secondary small-btn" data-confirm-proposal="${esc(proposal.proposalId)}">${agentCopy("选择此方案","Choose this option")}</button></article>`}).join("")}</div>`:""}
-function agentReplyMarkup(response,administrator){if(!response)return `<div class="agent-welcome"><div class="assistant-orbit" aria-hidden="true"><i></i><i></i><i></i></div><p>${administrator?agentCopy("AI 助手","AI Assistant"):agentCopy("预约助手","Booking assistant")}</p><h2>${administrator?agentCopy("今天想了解什么？","What would you like to explore?"):agentCopy("把实验时间留给真正重要的事。","Make more room for the work that matters.")}</h2></div>`;if(response.errors?.length)return `<div class="agent-bubble agent-error">${esc(response.errors[0].message||response.message)}</div>`;return `<div class="agent-bubble">${esc(response.message)}</div>${agentActionMarkup(response,administrator)}`}
+function agentReplyMarkup(response,administrator){if(!response)return `<div class="agent-welcome"><div class="assistant-orbit" aria-hidden="true"><i></i><i></i><i></i></div><p>${agentCopy("AI 助手","AI Assistant")}</p><h2>${administrator?agentCopy("今天想了解什么？","What would you like to explore?"):agentCopy("把实验时间留给真正重要的事。","Make more room for the work that matters.")}</h2></div>`;if(response.errors?.length)return `<div class="agent-bubble agent-error">${esc(response.errors[0].message||response.message)}</div>`;return `<div class="agent-bubble">${esc(response.message)}</div>${agentActionMarkup(response,administrator)}`}
 function agentConversationKey(agentType){return `lab-booking-agent-history-v1:${db.session||"anonymous"}:${agentType}`}
 function agentConversation(agentType){if(agentConversations[agentType])return agentConversations[agentType];try{let saved=JSON.parse(localStorage.getItem(agentConversationKey(agentType))||"[]");agentConversations[agentType]=Array.isArray(saved)?saved.filter(item=>item&&["user","assistant"].includes(item.role)&&typeof item.message==="string").slice(-20):[]}catch{agentConversations[agentType]=[]}return agentConversations[agentType]}
 function appendAgentConversation(agentType,entries){let next=[...agentConversation(agentType),...entries].slice(-20);agentConversations[agentType]=next;localStorage.setItem(agentConversationKey(agentType),JSON.stringify(next));return next}
@@ -492,12 +512,13 @@ async function askAgent(confirmation=null){if(agentSubmitting)return;let ownerId
 function syncAgentSend(){let button=q("#askAgent"),prompt=q("#agentPrompt");if(button&&prompt)button.disabled=!prompt.value.trim()}
 function agentPage(){
   let administrator=admin();
-  head(administrator?"ADMIN / AI ASSISTANT":"STUDENT / AI ASSISTANT",administrator?agentCopy("AI 助手","AI Assistant"):agentCopy("预约助手","Booking assistant"));
-  q("#content").innerHTML=`<section class="agent-workspace"><section class="agent-conversation"><div class="agent-brand"><span>✦</span>${administrator?agentCopy("AI 助手","AI Assistant"):agentCopy("预约助手","Booking assistant")}</div><div id="agentOutput" class="agent-thread" aria-live="polite">${agentConversationMarkup(administrator?"admin_analyst":"booking_planner",agentResponse,administrator)}</div>${agentResponse||agentConversation(administrator?"admin_analyst":"booking_planner").length?"":agentStarterMarkup(administrator)}<label class="agent-composer"><textarea id="agentPrompt" maxlength="500" aria-label="${agentCopy("请输入你的需求","Describe what you need")}" placeholder="${administrator?agentCopy("查询统计、标记故障已修复或导出 TXT…","Ask about lab activity, repairs or TXT exports…"):agentCopy("输入你的预约需求…","Describe the time you need…")}"></textarea><button id="askAgent" class="agent-send" type="button" aria-label="${agentCopy("发送","Send")}" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12V4m0 0L4.8 7.2M8 4l3.2 3.2"/></svg></button></label></section></section>`;
+  head(administrator?"ADMIN / AI ASSISTANT":"STUDENT / AI ASSISTANT",agentCopy("AI 助手","AI Assistant"));
+  q("#content").innerHTML=`<section class="agent-workspace"><section class="agent-conversation"><div class="agent-brand"><span>✦</span>${agentCopy("AI 助手","AI Assistant")}</div><div id="agentOutput" class="agent-thread" aria-live="polite">${agentConversationMarkup(administrator?"admin_analyst":"booking_planner",agentResponse,administrator)}</div>${agentResponse||agentConversation(administrator?"admin_analyst":"booking_planner").length?"":agentStarterMarkup(administrator)}<label class="agent-composer"><textarea id="agentPrompt" maxlength="500" aria-label="${agentCopy("请输入你的需求","Describe what you need")}" placeholder="${administrator?agentCopy("查询统计、标记故障已修复或导出 TXT…","Ask about lab activity, repairs or TXT exports…"):agentCopy("输入预约需求或上报设备故障…","Request a booking or report a device fault…")}"></textarea><button id="askAgent" class="agent-send" type="button" aria-label="${agentCopy("发送","Send")}" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12V4m0 0L4.8 7.2M8 4l3.2 3.2"/></svg></button></label></section></section>`;
   q("#askAgent").onclick=()=>askAgent();q("#agentPrompt").oninput=syncAgentSend;q("#agentPrompt").onkeydown=event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.isComposing&&!event.repeat&&!q("#askAgent").disabled){event.preventDefault();askAgent()}};
   qa("[data-agent-prompt]").forEach(button=>button.onclick=()=>{q("#agentPrompt").value=button.dataset.agentPrompt;syncAgentSend();q("#agentPrompt").focus()});
   qa("[data-confirm-proposal]").forEach(button=>button.onclick=()=>askAgent({proposalId:button.dataset.confirmProposal,idempotencyKey:crypto.randomUUID()}));
   qa("[data-agent-export]").forEach(button=>button.onclick=()=>downloadAgentExport(button.dataset.agentExport));
+  qa("[data-agent-fault-report]").forEach(button=>button.onclick=reviewAgentFaultReport);
   syncLanguage()
 }
 
@@ -532,6 +553,8 @@ async function removeStudent(userId){
 
 async function submitCloudIssue(event){
   event.preventDefault();
+  const ownerId=db.session,agentOwner=q("#faultModal").dataset?.agentOwner;
+  if(agentOwner&&agentOwner!==ownerId)return;
   let description=q("#faultText").value.trim(),button=q("#submitFault");
   if(button.disabled)return;
   if(!validateFaultDescription()){q("#faultText").focus();return}
@@ -541,12 +564,20 @@ async function submitCloudIssue(event){
   try{
     // The database trigger marks the shared device faulty in this same transaction.
     let {data:issue,error}=await supabase.from("issue_reports")
-      .insert({device_number:deviceNumber,reporter_id:user().id,description,status:"faulty"})
+      .insert({device_number:deviceNumber,reporter_id:ownerId,description,status:"faulty"})
       .select("id,device_number,reporter_id,description,status,created_at").single();
+    if(ownerId!==db.session)return;
     if(error){toast(cloudError(error),"error");return}
     if(!db.faults.some(item=>item.id===issue.id))db.faults.push({id:issue.id,deskNo:deviceNumber,description:issue.description,reporter:user().name,reporterId:issue.reporter_id,status:issue.status,createdAt:issue.created_at});
     let device=db.devices.find(item=>item.number===deviceNumber);if(device)device.status="faulty";
     desks.delete(deviceNumber);bookingRequestKey=null;faultResponseMetrics=null;
+    if(agentOwner){
+      agentResponse=null;
+      appendAgentConversation("booking_planner",[{role:"assistant",message:agentCopy(
+        `已上报 ${deviceNumber} 号设备的故障，该设备已暂停预约。`,
+        `The fault on device ${deviceNumber} was reported. The device is unavailable for reservations.`
+      )}]);
+    }
     q("#faultForm").reset();q("#faultModal").close();
     toast("故障已上报，设备已停止预约。");render();
     // A failed follow-up read must not erase the successful report or re-enable it.
