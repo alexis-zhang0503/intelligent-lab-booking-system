@@ -5,6 +5,7 @@ const {pgcrypto}=await import(process.env.PGCRYPTO_MODULE||'@electric-sql/pglite
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {runBookingAgent} from '../backend/supabase/functions/deepseek-booking-agent/booking-agent-tools.mjs';
+import {prepareAdminAction} from '../backend/supabase/functions/deepseek-booking-agent/admin-agent-actions.mjs';
 
 const root=new URL('../backend/supabase/',import.meta.url);
 const student='00000000-0000-0000-0000-000000000011';
@@ -68,8 +69,19 @@ try{
   await db.query(`select public.v3_execute_agent_proposal($1::uuid,$2::uuid)`,[faultProposal.proposalId,'10000000-0000-0000-0000-000000000006']);
   assert.equal((await db.query(`select status from public.devices where number=1`)).rows[0].status,'faulty');
   const repairSession=(await db.query(`select * from public.v3_save_agent_session(null,'fault_responder','{}'::jsonb)`)).rows[0];
-  const repairProposal=(await db.query(`select public.v3_create_fault_proposal($1::uuid,'complete_fault_repair',$2::uuid,'') as proposal`,[repairSession.session_id,issue.id])).rows[0].proposal;
-  await db.query(`select public.v3_execute_agent_proposal($1::uuid,$2::uuid)`,[repairProposal.proposalId,'10000000-0000-0000-0000-000000000007']);
+  const repair=await prepareAdminAction([{function:{name:'prepare_lab_action',arguments:'{"action":"repair_fault","deviceNumber":1}'}}],{
+    findOpenFaults:async number=>(await db.query(`select id from public.issue_reports where device_number=$1 and status in ('reported','faulty') and deleted_at is null limit 2`,[number])).rows,
+    prepareRepair:async issueId=>(await db.query(`select public.v3_create_fault_proposal($1::uuid,'complete_fault_repair',$2::uuid,'') as proposal`,[repairSession.session_id,issueId])).rows[0].proposal,
+  });
+  const repairKey='10000000-0000-0000-0000-000000000007';
+  assert.equal(repair.kind,'repair');
+  assert.equal((await db.query(`select status from public.devices where number=1`)).rows[0].status,'faulty');
+  await asUser(other);
+  await assert.rejects(db.query(`select public.v3_execute_agent_proposal($1::uuid,$2::uuid)`,[repair.proposal.proposalId,repairKey]),/proposal was not found/i);
+  await asUser(admin);
+  await db.query(`select public.v3_execute_agent_proposal($1::uuid,$2::uuid)`,[repair.proposal.proposalId,repairKey]);
+  await db.query(`select public.v3_execute_agent_proposal($1::uuid,$2::uuid)`,[repair.proposal.proposalId,repairKey]);
+  assert.equal((await db.query(`select count(*)::int as count from public.fault_response_events where issue_id=$1 and action='repaired'`,[issue.id])).rows[0].count,1);
   assert.equal((await db.query(`select status from public.devices where number=1`)).rows[0].status,'available');
   assert.equal((await db.query(`select status from public.reservations where id=$1`,[confirmed.reservationIds[0]])).rows[0].status,'confirmed');
   await asUser(student);

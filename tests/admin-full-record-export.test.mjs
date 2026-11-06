@@ -22,6 +22,20 @@ function setup(){
   });
   vm.runInContext(`${source}
     globalThis.exportApi={
+      assistant:administrator=>{
+        language='zh';
+        db={users:[{id:'test',role:administrator?'admin':'student'}],session:'test'};
+        nav();
+        const card=agentActionMarkup({proposals:[{actionType:'complete_fault_repair',proposalId:'repair',deviceNumber:1}],facts:{exports:['reservations','issues','invalid']}},administrator);
+        return q('#nav').innerHTML+card;
+      },
+      assistantDownload:async(administrator,changeAccount=false)=>{
+        db={users:[{id:'test',role:administrator?'admin':'student'}],session:'test',bookings:[],faults:[]};
+        refreshCloud=async()=>{if(changeAccount)db.session='other';return true};
+        download=(name,text)=>globalThis.downloaded={name,text};
+        await downloadAgentExport('issues');
+        return globalThis.downloaded;
+      },
       dashboard:()=>{
         language='zh';page='dashboard';adminMetrics={capacity_data_complete:true,device_utilization:[],slot_usage_trends:[]};
         db={users:[{id:'admin',role:'admin'}],devices:[],bookings:[],faults:[],session:'admin'};
@@ -64,4 +78,23 @@ test('issue export includes its resolution history',()=>{
   assert.match(file.text,/已更换网线/);
   assert.match(file.text,/修复时间：/);
   assert.match(file.text,/处理人：B/);
+});
+
+test('AI Assistant shows repair confirmation and both downloads only to administrators',()=>{
+  const api=setup();
+  const html=api.assistant(true);
+  assert.match(html,/AI 助手/);
+  assert.doesNotMatch(html,/AI 决策/);
+  assert.match(html,/data-confirm-proposal="repair"/);
+  assert.match(html,/确认修复/);
+  assert.match(html,/data-agent-export="reservations"/);
+  assert.match(html,/data-agent-export="issues"/);
+  assert.doesNotMatch(html,/invalid/);
+  assert.doesNotMatch(api.assistant(false),/data-agent-export|data-confirm-proposal/);
+});
+
+test('the assistant downloads the existing TXT and refuses a role or account change',async()=>{
+  assert.equal((await setup().assistantDownload(true)).name,'issues.txt');
+  assert.equal(await setup().assistantDownload(false),undefined);
+  assert.equal(await setup().assistantDownload(true,true),undefined);
 });

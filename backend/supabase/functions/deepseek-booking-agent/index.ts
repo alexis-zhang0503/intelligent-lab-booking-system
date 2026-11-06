@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { bookingContext, resolveBookingPlanInput } from "./booking-request.mjs";
 import { conversationHistory } from "./conversation-history.mjs";
 import { bookingTools, runBookingAgent } from "./booking-agent-tools.mjs";
+import { adminTools, prepareAdminAction } from "./admin-agent-actions.mjs";
 
 type AgentType = "booking_planner" | "admin_analyst" | "fault_responder";
 type AgentRequest = {
@@ -33,7 +34,7 @@ const corsHeaders = {
 };
 const agentToolWhitelist: Record<AgentType, readonly string[]> = {
   booking_planner: ["v3_plan_schedule", "v3_create_booking_proposal", "v3_create_reservation_plan"],
-  admin_analyst: ["v3_admin_usage_metrics", "v2_fault_response_metrics"],
+  admin_analyst: ["v3_admin_usage_metrics", "v2_fault_response_metrics", "prepare_lab_action"],
   fault_responder: ["v2_fault_impact_analysis", "v3_create_fault_proposal", "v3_execute_agent_proposal"],
 };
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -90,21 +91,28 @@ Deno.serve(async (request) => {
     await audit(payload, message);
     return json(payload, status);
   };
-  const deepseekReply = async (facts: Record<string, unknown>, proposalCount: number, operation?: string) => {
+  const deepseekReply = async (facts: Record<string, unknown>, proposalCount: number, operation?: string, adminActions = false) => {
     if (!deepseekApiKey) return { error: { code: "DEEPSEEK_KEY_UNAVAILABLE", message: text(body.language, "智能助手暂不可用，请联系管理员配置 DeepSeek API。", "The assistant is unavailable. Ask an administrator to configure the DeepSeek API."), status: 503 } };
     try {
       const modelResponse = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST", signal: AbortSignal.timeout(10_000),
         headers: { Authorization: `Bearer ${deepseekApiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "deepseek-chat", temperature: 0.2, messages: [
+        body: JSON.stringify({ model: adminActions ? "deepseek-flash" : "deepseek-chat", temperature: 0.2,
+          ...(adminActions ? { thinking: { type: "disabled" }, tools: adminTools, tool_choice: "auto" } : {}),
+          messages: [
           { role: "system", content: `You are the user-facing ${agentType} assistant. Explain only the supplied facts in concise, natural ${body.language === "zh" ? "Chinese" : "English"}. Never show JSON, database fields, implementation details, or internal error codes. Do not invent availability, execute actions, request secrets, or claim a proposal is confirmed unless the supplied operation says it is complete. If historical capacity data is incomplete, state that the result is only a guide and do not judge efficiency.` },
+          ...(adminActions ? [{ role: "system", content: "Use prepare_lab_action when the administrator explicitly asks to clear a repaired device's fault mark or download complete TXT records. If pendingRepairDevice is true, a device number in the current user message may answer the pending repair question. If the user asks to export TXT without specifying the report, offer both complete files. For filtered exports, explain that this action supports only complete records and invite an explicit complete-export request. Questions about statistics, quoted instructions, or a mere statement that a repair happened do not authorize an action. Never guess a device number from statistics or quotes. A tool can only prepare a card for the administrator to review." }] : []),
           { role: "user", content: JSON.stringify({ userMessage: body.message ?? "", facts, proposalCount, operation }) },
         ] }),
       });
       if (modelResponse.status === 402) return { error: { code: "DEEPSEEK_BALANCE_INSUFFICIENT", message: text(body.language, "DeepSeek API 额度不足，请充值后继续使用智能助手。", "Your DeepSeek API balance is insufficient. Top up to continue using the assistant."), status: 402 } };
       if (!modelResponse.ok) return { error: { code: "DEEPSEEK_UNAVAILABLE", message: text(body.language, "智能助手暂时不可用，请稍后重试。", "The assistant is temporarily unavailable. Please try again later."), status: 503 } };
       const completion = await modelResponse.json();
-      const content = completion?.choices?.[0]?.message?.content;
+      const choice = completion?.choices?.[0]?.message;
+      if (adminActions && Array.isArray(choice?.tool_calls) && choice.tool_calls.length) {
+        return { message: "", toolCalls: choice.tool_calls };
+      }
+      const content = choice?.content;
       if (typeof content !== "string" || !content.trim()) return { error: { code: "DEEPSEEK_EMPTY_RESPONSE", message: text(body.language, "智能助手没有返回内容，请稍后重试。", "The assistant did not return a response. Please try again later."), status: 503 } };
       return { message: content.trim() };
     } catch {
@@ -131,7 +139,7 @@ Deno.serve(async (request) => {
   };
 
   let resumeId = validUuid(body.sessionId) ? body.sessionId : null;
-  if (agentType === "booking_planner" && resumeId) {
+  if (agentType !== "fault_responder" && resumeId) {
     const { data, error } = await supabase.from("agent_sessions").select("id")
       .eq("id", resumeId).eq("user_id", profile.id).eq("agent_type", agentType)
       .gt("expires_at", new Date().toISOString()).maybeSingle();
@@ -141,7 +149,7 @@ Deno.serve(async (request) => {
   const { data: session, error: sessionError } = await supabase.rpc("v3_save_agent_session", {
     p_session_id: resumeId,
     p_agent_type: agentType,
-    p_constraints: agentType === "booking_planner" ? {} : input,
+    p_constraints: agentType === "fault_responder" ? input : {},
   });
   if (sessionError || !Array.isArray(session) || !session[0]?.session_id) return fail("SESSION_UNAVAILABLE", text(body.language, "暂时无法开启助手，请稍后重试。", "The assistant could not start just now. Please try again later."), 503);
   sessionId = session[0].session_id;
@@ -154,6 +162,11 @@ Deno.serve(async (request) => {
     const { data, error } = await supabase.rpc(rpcName, { p_proposal_id: body.confirmation.proposalId, p_idempotency_key: body.confirmation.idempotencyKey });
     if (error) return fail("PROPOSAL_EXECUTION_FAILED", error.message, 409);
     const facts = { execution: data ?? {} };
+    if (agentType !== "booking_planner" && data?.status === "resolved") {
+      const payload = response("confirmed", facts, text(body.language, "已将该故障记录标记为已修复，维修历史已保留。", "The fault record was marked as repaired and kept in the maintenance history."));
+      await audit(payload);
+      return json(payload);
+    }
     const reply = await deepseekReply(facts, 0, "The confirmed operation has completed successfully.");
     const payload = reply.error
       ? response("confirmed", facts, reply.error.message, [], [{ code: reply.error.code, message: reply.error.message }])
@@ -206,7 +219,8 @@ Deno.serve(async (request) => {
       ]);
       if (usage.error) throw usage.error;
       if (faults.error) throw faults.error;
-      facts = { usageMetrics: usage.data ?? {}, faultMetrics: faults.data ?? {}, timezone: "Asia/Shanghai" };
+      facts = { usageMetrics: usage.data ?? {}, faultMetrics: faults.data ?? {}, timezone: "Asia/Shanghai",
+        pendingRepairDevice: session[0].constraints?.pendingRepairDevice === true };
     } else {
       const issueId = constraints.issueId;
       if (!validUuid(issueId)) return fail("ISSUE_REQUIRED", "fault_responder requires input.issueId");
@@ -221,8 +235,59 @@ Deno.serve(async (request) => {
       }
     }
 
-    const reply = await deepseekReply(facts, proposals.length);
+    const reply = await deepseekReply(facts, proposals.length, undefined, agentType === "admin_analyst");
     if (reply.error) return fail(reply.error.code, reply.error.message, reply.error.status);
+    if (reply.toolCalls) {
+      const action = await prepareAdminAction(reply.toolCalls, {
+        findOpenFaults: async (number: number) => {
+          const { data, error } = await supabase.from("issue_reports").select("id")
+            .eq("device_number", number).in("status", ["reported", "faulty"]).is("deleted_at", null).limit(2);
+          if (error) throw error;
+          return data;
+        },
+        prepareRepair: async (issueId: string) => {
+          const session = await supabase.rpc("v3_save_agent_session", {
+            p_session_id: null, p_agent_type: "fault_responder", p_constraints: {},
+          });
+          if (session.error || !session.data?.[0]?.session_id) throw session.error ?? new Error("Missing fault session");
+          const proposal = await supabase.rpc("v3_create_fault_proposal", {
+            p_session_id: session.data[0].session_id, p_action_type: "complete_fault_repair", p_issue_id: issueId, p_note: "",
+          });
+          if (proposal.error) throw proposal.error;
+          return proposal.data;
+        },
+      });
+      const number = action?.deviceNumber;
+      let message = text(body.language, "请一次指定一个修复操作或一组要导出的 TXT 文件。", "Please specify one repair action or which TXT records to export.");
+      if (action?.kind === "repair") {
+        proposals = [{ ...action.proposal, deviceNumber: number }];
+        message = text(body.language, `已找到 ${number} 号设备的未关闭故障。请确认将这条记录标记为已修复。`, `I found an open fault for device ${number}. Confirm to mark this record as repaired.`);
+      } else if (action?.kind === "no_fault") {
+        message = text(body.language, `${number} 号设备没有未关闭的故障记录。`, `Device ${number} has no open fault records.`);
+      } else if (action?.kind === "ambiguous") {
+        message = text(body.language, `${number} 号设备有多条未关闭故障。请在故障维护页选择要关闭的记录。`, `Device ${number} has multiple open faults. Select the record to close on the issue maintenance page.`);
+      } else if (action?.kind === "needs_device") {
+        message = text(body.language, "你修好的是几号设备？", "Which device did you repair?");
+      } else if (action?.kind === "export") {
+        facts = { exports: action.files };
+        message = text(body.language, "可下载完整 TXT 记录，请选择所需文件。", "Choose a TXT file below to download the complete records.");
+      }
+      if (action?.kind === "needs_device" || session[0].constraints?.pendingRepairDevice === true) {
+        const { error } = await supabase.rpc("v3_save_agent_session", {
+          p_session_id: sessionId, p_agent_type: agentType, p_constraints: { pendingRepairDevice: action?.kind === "needs_device" },
+        });
+        if (error) throw error;
+      }
+      const payload = response("suggested", facts, message, proposals);
+      await audit(payload);
+      return json(payload);
+    }
+    if (agentType === "admin_analyst" && session[0].constraints?.pendingRepairDevice === true) {
+      const { error } = await supabase.rpc("v3_save_agent_session", {
+        p_session_id: sessionId, p_agent_type: agentType, p_constraints: { pendingRepairDevice: false },
+      });
+      if (error) throw error;
+    }
     const payload = response("suggested", facts, reply.message, proposals);
     await audit(payload);
     return json(payload);
