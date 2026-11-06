@@ -2,6 +2,37 @@
 .auth { overflow-x: clip; }
 .invite-compact { display: none; }
 
+@media (min-width: 1101px) {
+  .booking > .side-select {
+    /* Use the floor plan's height even when recommendations arrive asynchronously. */
+    contain: size;
+    position: static;
+    align-self: stretch;
+    height: auto;
+    grid-template-rows: minmax(0, auto) minmax(min-content, 1fr) auto;
+  }
+  .booking-flow {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    min-height: 0;
+  }
+  .booking-flow > :not(#scheduleSuggestions) { flex-shrink: 0; }
+  .booking > .side-select > .lab-status { margin-block: 0; }
+  #scheduleSuggestions {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+  #scheduleSuggestions > .records { max-height: none; overflow: visible; }
+  #scheduleSuggestions .record > div { min-width: 0; overflow-wrap: anywhere; }
+  #scheduleSuggestions .record > button { flex-shrink: 0; }
+  #scheduleSuggestions:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+}
+
 @media (min-width: 641px) and (max-width: 1100px) {
   .booking { grid-template-columns: minmax(0, 1fr); }
   .side-select { position: static; height: auto; }
