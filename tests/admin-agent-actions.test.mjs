@@ -27,3 +27,9 @@ test("exports return allowlisted identifiers and never invoke a write tool", asy
   assert.deepEqual(await prepareAdminAction(call({ action: "delete_all" }), {}), { kind: "invalid" });
   assert.equal(await prepareAdminAction([], {}), null);
 });
+
+test("the model can request each of the two TXT files in separate tool calls", async () => {
+  const calls = [...call({ action: "export_reservations" }), ...call({ action: "export_issues" })];
+  assert.deepEqual(await prepareAdminAction(calls, {}), { kind: "export", files: ["reservations", "issues"] });
+  assert.deepEqual(await prepareAdminAction([...calls.slice(0, 1), ...call({ action: "repair_fault", deviceNumber: 1 })], {}), { kind: "invalid" });
+});

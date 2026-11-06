@@ -15,15 +15,19 @@ export const adminTools = [{
   },
 }];
 
+const exportFiles = { export_reservations: ["reservations"], export_issues: ["issues"], export_all: ["reservations", "issues"] };
+
 export async function prepareAdminAction(calls, { findOpenFaults, prepareRepair }) {
   if (!calls?.length) return null;
-  const call = calls[0]?.function;
-  if (calls.length !== 1 || call?.name !== "prepare_lab_action") return { kind: "invalid" };
-  let args;
-  try { args = JSON.parse(call.arguments); } catch { return { kind: "invalid" }; }
-  if (args?.action === "export_reservations") return { kind: "export", files: ["reservations"] };
-  if (args?.action === "export_issues") return { kind: "export", files: ["issues"] };
-  if (args?.action === "export_all") return { kind: "export", files: ["reservations", "issues"] };
+  if (calls.length > 2 || calls.some(call => call?.function?.name !== "prepare_lab_action")) return { kind: "invalid" };
+  let actions;
+  try { actions = calls.map(call => JSON.parse(call.function.arguments)); } catch { return { kind: "invalid" }; }
+  if (actions.every(item => typeof item?.action === "string" && Object.hasOwn(exportFiles, item.action))) {
+    const requested = new Set(actions.flatMap(item => exportFiles[item.action]));
+    return { kind: "export", files: exportFiles.export_all.filter(key => requested.has(key)) };
+  }
+  if (actions.length !== 1) return { kind: "invalid" };
+  const [args] = actions;
   if (args?.action !== "repair_fault") return { kind: "invalid" };
   const { deviceNumber } = args;
   if (!Number.isInteger(deviceNumber) || deviceNumber < 1 || deviceNumber > 40) return { kind: "needs_device" };
