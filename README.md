@@ -1,6 +1,6 @@
 # 智能实验室预约系统
 
-包含 GitHub Pages Web 客户端与 Windows Qt/C++ 客户端的课程作业项目。
+课程项目的最终交付版本，包含 GitHub Pages 网页端与 Windows 原生桌面端；两端连接同一套 Supabase 数据库、权限规则和预约接口。
 
 ## 功能
 
@@ -12,17 +12,19 @@
 - 选做的输入校验、累计实验时长；
 - 下载题目要求的 count.txt 与 error.txt。
 
-## 两个客户端
+## 项目结构
 
-- 根目录 Web 客户端：用于 GitHub Pages 展示与移动端访问；
-- [qt-client](qt-client/README.md)：Qt 6 Widgets/C++ Windows 图形界面；
+- 根目录与 `web/`：用于 GitHub Pages 展示与移动端访问的网页客户端；
+- [desktop-c](desktop-c/README.md)：最终 Windows Win32/C11 原生桌面客户端；
 - [backend/supabase](backend/supabase/README.md)：供两个客户端共享的 Supabase 数据库、权限与原子预约契约。
+
+旧 Qt 客户端和旧 WebView2 外壳已移除，本仓库仅保留 `desktop-c/` 中的最终桌面端实现。
 
 管理员开通步骤见 [backend/supabase/ADMIN_ACCOUNT_RUNBOOK.md](backend/supabase/ADMIN_ACCOUNT_RUNBOOK.md)。
 
 ## 数据范围
 
-Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`backend/supabase/cloud-migration.sql` 和 `backend/supabase/admin-invite-migration.sql`，再在 **Authentication → Providers → Email** 关闭 **Confirm email**。之后学生注册、管理员权限、设备状态、预约冲突和实时刷新均以共享数据库为准。Qt 客户端目前保留离线本地演示模式，尚未接入云端。
+Web 与桌面客户端均已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`backend/supabase/cloud-migration.sql` 和 `backend/supabase/admin-invite-migration.sql`，再在 **Authentication → Providers → Email** 关闭 **Confirm email**。之后学生注册、管理员权限、设备状态、预约冲突和实时刷新均以共享数据库为准。
 
 ## V2.0 智能预约升级
 
@@ -41,4 +43,10 @@ Web 客户端已接入 Supabase：请先执行 `backend/supabase/schema.sql`、`
 
 ## 签到修复
 
-网页签到时间、异常提示和 Qt 本地签到实现已更新，部署所需的数据库步骤及验证范围见 [签到修复与上传说明](docs/attendance-fix.md)。只推送前端文件不会更新 Supabase 函数，必须按说明执行增量迁移。
+网页与原生 C 桌面端均通过同一套 Supabase 签到接口工作。只推送前端文件不会更新 Supabase 函数，必须按后端说明执行增量迁移。
+
+## Windows 原生 C11 桌面端
+
+[`desktop-c`](desktop-c/README.md) 是 C11 Win32 客户端，使用 WinHTTP 调用与网页端相同的 Supabase 认证、预约、签到、故障处理和统计接口，不依赖 Qt、WebView2 或浏览器运行时。请在 Visual Studio 的 x64 Native Tools Command Prompt 中执行 `powershell -ExecutionPolicy Bypass -File desktop-c/build.ps1`；构建脚本会运行客户端测试并在 `desktop-c/dist/` 输出 `LabReservation.exe`。
+
+完整构建、依赖和验证说明见 [desktop-c/README.md](desktop-c/README.md)。

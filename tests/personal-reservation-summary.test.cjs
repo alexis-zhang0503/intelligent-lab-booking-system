@@ -13,7 +13,7 @@ function setup(){
     hourToMinutes:h=>h*60,hourlyRange:h=>`${h}:00–${h+1}:00`,playIntro(){},attendanceState:()=> "closed",reservationStart:b=>new Date(`${b.date}T00:00:00`).getTime()+b.hour*3600000
   });
   const source=fs.readFileSync(new URL('../app.js',`file://${__filename}`),'utf8')
-    .replace(/^import .*;\n/gm,'').replace(/\nbootCloud\(\);\s*$/,'');
+.replace(/^import .*;\r?\n/gm,'').replace(/\nbootCloud\(\);\s*$/,'');
   vm.runInContext(source,context);
   const run=code=>vm.runInContext(code,context);
   run(`db={users:[{id:'student',name:'学生',role:'student',loginId:'B001'}],session:'student',devices:[],faults:[],bookings:[]};syncLanguage=()=>{};toast=()=>{};`);

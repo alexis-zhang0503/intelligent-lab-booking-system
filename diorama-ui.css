@@ -77,3 +77,18 @@ input,select,textarea{border-color:var(--color-border-subtle);border-radius:var(
   body .side>#logout{order:5;display:block;flex:0 0 auto;width:auto;margin:0 8px;padding:8px 0;text-align:left}
   body .side>nav+.link-btn{margin-bottom:20px}
 }
+
+/* Checked-in devices retain a visible live-use badge, independently of a future selection. */
+.legend .using,.device-legend .using{background:#1686a0}
+.lab .desk.in-use:not(.faulty){border-color:#1686a0;background:#e8f6fa;color:#0b6276}
+.lab .desk.in-use:not(.faulty) i{color:#0b6276;font-size:.65rem;font-style:normal;font-weight:700;white-space:nowrap}
+.lab .desk.in-use.selected:not(.faulty){border-color:var(--color-accent);box-shadow:inset 0 0 0 1px var(--color-accent)}
+@media(prefers-color-scheme:dark){.lab .desk.in-use:not(.faulty){background:#173e49;color:#90dcec}.lab .desk.in-use:not(.faulty) i{color:#90dcec}}
+
+/* Keep personal histories compact, independently scrollable and keyboard accessible. */
+.personal-record-list{max-height:360px;max-height:min(360px,55vh);overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-gutter:stable;padding:2px 8px 2px 2px;border-radius:var(--ui-radius-sm)}
+.personal-record-list>.records{max-height:none;overflow:visible}
+.personal-record-list:focus-visible{outline:2px solid var(--color-accent);outline-offset:3px}
+.personal-record-list .record>div:first-child{min-width:0;overflow-wrap:anywhere}
+.personal-record-list .record>div:last-child,.personal-record-list .record>button,.personal-record-list .record>.tag{flex-shrink:0}
+@media(max-width:640px){.personal-record-list{max-height:300px;max-height:min(300px,50vh)}}

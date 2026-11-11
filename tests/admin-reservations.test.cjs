@@ -5,7 +5,7 @@ const vm=require('node:vm');
 function setup(){
  const nodes=new Map();const node=s=>{if(!nodes.has(s))nodes.set(s,{value:'',innerHTML:'',dataset:{},classList:{add(){},remove(){}},setAttribute(){}});return nodes.get(s)};
  const context=vm.createContext({console,Date,Map,Set,Intl,Number,String,Math,JSON,localStorage:{getItem:()=> 'zh'},document:{querySelector:node,querySelectorAll:()=>[],addEventListener(){},body:{dataset:{},classList:{contains:()=>false}}},window:{addEventListener(){},confirm:()=>true},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,DESKS:Array.from({length:40},(_,i)=>i+1),SLOTS:[8,9,10,11,12,13,14,15,16],supabase:{},hourlyRange:h=>`${String(h).padStart(2,'0')}:00–${String(h+1).padStart(2,'0')}:00`});
- vm.runInContext(fs.readFileSync(new URL('../app.js',`file://${__filename}`),'utf8').replace(/^playSiteEntry\(\);$/gm,'').replace(/^import .*;\n/gm,'').replace(/\nbootCloud\(\);\s*$/,''),context);
+ vm.runInContext(fs.readFileSync(new URL('../app.js',`file://${__filename}`),'utf8').replace(/^playSiteEntry\(\);$/gm,'').replace(/^import .*;\r?\n/gm,'').replace(/\nbootCloud\(\);\s*$/,''),context);
  const run=code=>vm.runInContext(code,context);
  run(`db={users:[{id:'a',name:'Admin',role:'admin',loginId:'admin'},{id:'s',name:'Student <A>',role:'student',loginId:'B2501'}],session:'a',devices:[],faults:[],bookings:[{id:'r',userId:'s',deskNo:23,date:today(1),hour:9,userName:'Student <A>',status:'confirmed',createdAt:'2026-11-03T00:00:00Z'}]};syncLanguage=()=>{};toast=(text,type)=>{globalThis.lastToast={text,type}};render=()=>{globalThis.rendered=true};refreshCloud=async()=>true;cloudError=e=>e.message;`);
  return {run,node};

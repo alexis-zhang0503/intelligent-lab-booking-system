@@ -31,17 +31,15 @@
 
 ## 桌面端构建与数据范围
 
-Qt 桌面端仍然是原项目的本地演示客户端，本次没有将它改造成云端客户端。它的账号、预约和签到不会自动与网页互通。若你的实际桌面程序使用的不是仓库内 `qt-client/` 源码，需要用实际源码再次核对。
+最终交付使用 `desktop-c/` 中的 Win32/C11 客户端。它通过 WinHTTP 调用与网页端共用的 Supabase 认证、预约和签到接口；前提是本文件所列的数据库迁移已完成。
 
-在已安装 Qt 6.4+、CMake 3.21+ 和 C++17 编译器的终端运行：
+在 Visual Studio 的 x64 Native Tools Command Prompt 中运行：
 
-```sh
-cmake -S qt-client -B build -DBUILD_TESTING=ON
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop-c/build.ps1
 ```
 
-Windows 发行版还需用对应 Qt 安装中的 windeployqt 部署依赖。本交付包含源码，不包含已经编译的 Windows EXE。
+脚本会运行 C 客户端测试，并在 `desktop-c/dist/` 生成 Windows EXE；详细说明见 [`desktop-c/README.md`](../desktop-c/README.md)。
 
 ## 验证结果
 

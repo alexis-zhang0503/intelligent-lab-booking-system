@@ -1,5 +1,0 @@
-<RCC>
-  <qresource prefix="/brand">
-    <file alias="lab-logo.svg">../favicon.svg</file>
-  </qresource>
-</RCC>
