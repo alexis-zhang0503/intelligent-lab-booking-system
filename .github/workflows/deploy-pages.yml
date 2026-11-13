@@ -25,8 +25,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build shared web and desktop UI
-        run: python scripts/build_site.py --out _site --version "${{ github.sha }}"
+      - name: Build web site
+        run: python web/scripts/build_site.py --out _site --version "${{ github.sha }}"
       - uses: actions/configure-pages@v5
         with:
           enablement: true

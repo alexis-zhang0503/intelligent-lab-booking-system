@@ -8,8 +8,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/*.test.cjs tests/attendance.test.mjs tests/time-range-and-live-use.test.mjs
-      - run: python -m unittest discover -s tests -p test_shared_site_build.py
+      - run: node --test web/tests/*.test.cjs web/tests/attendance.test.mjs web/tests/time-range-and-live-use.test.mjs web/tests/personal-record-order.test.mjs
+      - run: python -m unittest discover -s web/tests -p test_shared_site_build.py
   database:
     runs-on: ubuntu-latest
     services:
@@ -28,4 +28,4 @@ jobs:
       PGPASSWORD: attendance-test-only
     steps:
       - uses: actions/checkout@v4
-      - run: psql -h localhost -U postgres -d attendance_test -v ON_ERROR_STOP=1 -f tests/attendance-fixture.sql -f backend/supabase/v2-2-attendance-fix.sql -f tests/attendance-db.sql
+      - run: psql -h localhost -U postgres -d attendance_test -v ON_ERROR_STOP=1 -f cloud/tests/attendance-fixture.sql -f cloud/database/11_v2-2-attendance-fix.sql -f cloud/tests/attendance-db.sql

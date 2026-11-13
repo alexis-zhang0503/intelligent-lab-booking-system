@@ -3,10 +3,9 @@ qt-client/build/
 .worktrees/
 *.user
 
-desktop-c/vendor-sdk/
-desktop-c/webview2-sdk.zip
-desktop-c/dist/
-desktop-c/assets/lab-logo.ico
+desktop/dist/
+desktop/assets/lab-logo.ico
+desktop/src/.vscode/
 _site/
 
 __pycache__/

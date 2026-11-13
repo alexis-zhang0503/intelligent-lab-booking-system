@@ -15,11 +15,11 @@ jobs:
           arch: x64
       - name: Build pure C Windows desktop
         shell: pwsh
-        run: ./desktop-c/build.ps1
+        run: ./desktop/build.ps1
       - name: Verify Windows application startup
         shell: pwsh
         run: |
-          $app = Start-Process desktop-c/dist/LabReservation.exe -PassThru
+          $app = Start-Process desktop/dist/LabReservation.exe -PassThru
           try {
             Start-Sleep -Seconds 6
             $app.Refresh()
@@ -31,4 +31,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: NJUPT-Lab-C-Desktop-Windows-x64
-          path: desktop-c/dist/
+          path: desktop/dist/
