@@ -1,2273 +1,1589 @@
-//【答辩注释】平台界面入口：收集用户输入，交给后台任务调用共享业务层，再在界面线程展示结果。Windows 使用 Win32 消息；macOS 使用 GTK 信号及主循环。界面权限提示不能替代云端鉴权。
-//【讲解 L1】按 UNICODE 是否已定义选择编译分支，避免重复定义或适配平台。
+/*
+ * main.c —— Windows 桌面版的界面层：窗口、按钮、列表、弹窗都在这里。
+ *
+ * 用户看到的一切（登录页、预约页的 40 个设备按钮、"我的"页、故障记录、用户管理、智能助手）
+ * 都由本文件创建和绘制；真正的业务（登录、预约、签到……）交给 client.c，联网交给 win_http.c。
+ *
+ * 整体运行流程（答辩必讲）：
+ *   1. wWinMain 创建主窗口，进入"消息循环"：不停地 GetMessage → DispatchMessage。
+ *   2. 用户点击按钮 → Windows 发来 WM_COMMAND 消息 → wndproc → command(按钮编号)。
+ *   3. command 检查输入、弹确认框，把这次操作需要的数据装进一个 Job 结构体（"任务单"）。
+ *   4. start_job 把登录状态复制进 Job，置 busy=1 让按钮变灰，用 CreateThread 启动后台线程 worker。
+ *   5. worker 在后台调用 client.c 联网（可能要几秒，界面不会卡住），然后重新加载全部数据。
+ *   6. worker 用 PostMessageW(RESULT_MESSAGE) 把 Job 指针"寄"回界面线程。
+ *   7. wndproc 收到 RESULT_MESSAGE：换上新数据、弹出结果提示、重画界面、释放 Job。
+ *   后台线程从不直接改全局变量和控件，数据都通过 Job 传递，所以两个线程之间不需要加锁。
+ */
+
+/* ===================== 模块 1：编译配置与头文件 =====================
+ * 功能：让程序使用宽字符（能显示中文）版本的 Windows 函数，指定目标系统为 Windows 10，并引入要用的库。
+ */
+// 定义 UNICODE 后，SetWindowText 等宏会自动选用带 W 的宽字符版本，界面才能正常显示中文
 #ifndef UNICODE
-//【讲解 L2】定义 UNICODE，用于编译配置或头文件保护。
 #define UNICODE
-//【讲解 L3】结束当前条件编译区域。
 #endif
-//【讲解 L4】按 _UNICODE 是否已定义选择编译分支，避免重复定义或适配平台。
 #ifndef _UNICODE
-//【讲解 L5】定义 _UNICODE，用于编译配置或头文件保护。
 #define _UNICODE
-//【讲解 L6】结束当前条件编译区域。
 #endif
-//【讲解 L7】按 _WIN32_WINNT 是否已定义选择编译分支，避免重复定义或适配平台。
+// 0x0A00 表示 Windows 10，才能使用较新的控件功能
 #ifndef _WIN32_WINNT
-//【讲解 L8】定义 _WIN32_WINNT，当前值为 0x0A00。
 #define _WIN32_WINNT 0x0A00
-//【讲解 L9】结束当前条件编译区域。
 #endif
-//【讲解 L10】引入 windows.h 的类型和函数声明。
+// windows.h：窗口、消息、线程等 Win32 基础函数；client.h / win_http.h：本项目的业务层与网络层
+// commctrl.h：列表(ListView)、日期选择框等"通用控件"；commdlg.h："另存为"对话框
+// objbase.h：生成 GUID（防重复编号）；shellapi.h：用浏览器打开下载页
+// windowsx.h：Win32 辅助宏；ui_theme.h：状态翻译、时间格式化等界面小工具
 #include <windows.h>
-//【讲解 L11】引入 client.h 的类型和函数声明。
 #include "client.h"
-//【讲解 L12】引入 win_http.h 的类型和函数声明。
 #include "win_http.h"
-//【讲解 L13】引入 commctrl.h 的类型和函数声明。
 #include <commctrl.h>
-//【讲解 L14】引入 commdlg.h 的类型和函数声明。
 #include <commdlg.h>
-//【讲解 L15】引入 objbase.h 的类型和函数声明。
 #include <objbase.h>
-//【讲解 L16】引入 shellapi.h 的类型和函数声明。
 #include <shellapi.h>
-//【讲解 L17】引入 stdio.h 的类型和函数声明。
 #include <stdio.h>
-//【讲解 L18】引入 stdlib.h 的类型和函数声明。
 #include <stdlib.h>
-//【讲解 L19】引入 string.h 的类型和函数声明。
 #include <string.h>
-//【讲解 L20】引入 windowsx.h 的类型和函数声明。
 #include <windowsx.h>
-//【讲解 L21】引入 ui_theme.h 的类型和函数声明。
 #include "ui_theme.h"
-//【讲解 L22】定义 RESULT_MESSAGE，当前值为 (WM_APP + 1)。
+
+/* ===================== 模块 2：颜色与编号 =====================
+ * 功能：给界面颜色、每个按钮、每种后台任务起名字。
+ * 场景：Windows 通知"某个按钮被点了"时只给一个整数编号，enum 让这些编号有可读的名字，
+ *       command 和 wndproc 里就能写 case ID_BOOK 而不是 case 104。
+ */
+// 自定义消息编号：后台线程完成后用它通知主窗口。WM_APP 以上的编号留给程序自用，不会和系统消息撞车；
+// 外层括号防止宏展开后和别的运算符结合出错
 #define RESULT_MESSAGE (WM_APP + 1)
-//【讲解 L23】定义 BG，当前值为 RGB(247,247,245)。
+// 界面配色（与网页版一致）：BG 背景灰、ACCENT 主题紫、BORDER 边框、MUTED 次要文字、INK 正文
 #define BG RGB(247,247,245)
-//【讲解 L24】定义 ACCENT，当前值为 RGB(92,99,214)。
 #define ACCENT RGB(92,99,214)
-//【讲解 L25】定义 BORDER，当前值为 RGB(232,232,227)。
 #define BORDER RGB(232,232,227)
-//【讲解 L26】定义 MUTED，当前值为 RGB(104,107,115)。
 #define MUTED RGB(104,107,115)
-//【讲解 L27】定义 INK，当前值为 RGB(35,37,43)。
 #define INK RGB(35,37,43)
-//【讲解 L28】定义操作编号，供按钮事件或后台任务分派使用。
+// 按钮编号：从 100 开始依次加 1，每个按钮对应一种操作。WM_COMMAND 消息里 LOWORD(wp) 就是这个编号
 enum {
-    //【讲解 L29】声明 ID_LOGIN 操作编号，与事件分派中的同名分支对应。
     ID_LOGIN = 100,
-    //【讲解 L30】声明 ID_REGISTER 操作编号，与事件分派中的同名分支对应。
     ID_REGISTER,
-    //【讲解 L31】声明 ID_REFRESH 操作编号，与事件分派中的同名分支对应。
     ID_REFRESH,
-    //【讲解 L32】声明 ID_LOGOUT 操作编号，与事件分派中的同名分支对应。
     ID_LOGOUT,
-    //【讲解 L33】声明 ID_BOOK 操作编号，与事件分派中的同名分支对应。
     ID_BOOK,
-    //【讲解 L34】声明 ID_ATTEND 操作编号，与事件分派中的同名分支对应。
     ID_ATTEND,
-    //【讲解 L35】声明 ID_CANCEL 操作编号，与事件分派中的同名分支对应。
     ID_CANCEL,
-    //【讲解 L36】声明 ID_REPORT 操作编号，与事件分派中的同名分支对应。
     ID_REPORT,
-    //【讲解 L37】声明 ID_REPAIR 操作编号，与事件分派中的同名分支对应。
     ID_REPAIR,
-    //【讲解 L38】声明 ID_ARCHIVE 操作编号，与事件分派中的同名分支对应。
     ID_ARCHIVE,
-    //【讲解 L39】声明 ID_DEACTIVATE 操作编号，与事件分派中的同名分支对应。
     ID_DEACTIVATE,
-    //【讲解 L40】声明 ID_INVITE 操作编号，与事件分派中的同名分支对应。
     ID_INVITE,
-    //【讲解 L41】声明 ID_METRICS 操作编号，与事件分派中的同名分支对应。
     ID_METRICS,
-    //【讲解 L42】声明 ID_UPDATE 操作编号，与事件分派中的同名分支对应。
     ID_UPDATE,
-    //【讲解 L43】声明 ID_PROFILE 操作编号，与事件分派中的同名分支对应。
     ID_PROFILE,
-    //【讲解 L44】声明 ID_SUGGEST 操作编号，与事件分派中的同名分支对应。
     ID_SUGGEST,
-    //【讲解 L45】声明 ID_AGENT 操作编号，与事件分派中的同名分支对应。
     ID_AGENT,
-    //【讲解 L46】声明 ID_AGENT_CONFIRM 操作编号，与事件分派中的同名分支对应。
     ID_AGENT_CONFIRM,
-    //【讲解 L47】声明 ID_EXPORT_BOOKINGS 操作编号，与事件分派中的同名分支对应。
     ID_EXPORT_BOOKINGS,
-    //【讲解 L48】声明 ID_EXPORT_ISSUES 操作编号，与事件分派中的同名分支对应。
     ID_EXPORT_ISSUES,
-    //【讲解 L49】声明 ID_USE_CANDIDATE 操作编号，与事件分派中的同名分支对应。
     ID_USE_CANDIDATE,
-    //【讲解 L50】声明 ID_TAB 操作编号，与事件分派中的同名分支对应。
+    // 200 段：标签页、记录列表、日期框、开始/结束小时下拉框（它们不是普通按钮，产生的通知不同）
     ID_TAB = 200,
-    //【讲解 L51】声明 ID_LIST 操作编号，与事件分派中的同名分支对应。
     ID_LIST,
-    //【讲解 L52】声明 ID_DATE 操作编号，与事件分派中的同名分支对应。
     ID_DATE,
-    //【讲解 L53】声明 ID_START 操作编号，与事件分派中的同名分支对应。
     ID_START,
-    //【讲解 L54】声明 ID_END 操作编号，与事件分派中的同名分支对应。
     ID_END,
-    //【讲解 L55】声明 ID_FIRST_DEVICE 操作编号，与事件分派中的同名分支对应。
+    // 300~339：40 台设备按钮，第 n 号设备的编号是 ID_FIRST_DEVICE + n - 1（侧栏导航 600~605 直接写在 WM_CREATE 里）
     ID_FIRST_DEVICE = 300
-//【讲解 L56】结束当前代码块或类型声明。
 };
-//【讲解 L57】定义操作编号，供按钮事件或后台任务分派使用。
+// 后台任务种类：告诉 worker 线程这次要做什么。和按钮编号分开，是因为多个按钮可以对应同一种任务
+// （例如"发送"和"选择此方案"都是 JOB_AGENT）
 enum {
-    //【讲解 L58】声明 JOB_LOGIN 操作编号，与事件分派中的同名分支对应。
     JOB_LOGIN,
-    //【讲解 L59】声明 JOB_REGISTER 操作编号，与事件分派中的同名分支对应。
     JOB_REGISTER,
-    //【讲解 L60】声明 JOB_REFRESH 操作编号，与事件分派中的同名分支对应。
     JOB_REFRESH,
-    //【讲解 L61】声明 JOB_BOOK 操作编号，与事件分派中的同名分支对应。
     JOB_BOOK,
-    //【讲解 L62】声明 JOB_ATTEND 操作编号，与事件分派中的同名分支对应。
     JOB_ATTEND,
-    //【讲解 L63】声明 JOB_CANCEL 操作编号，与事件分派中的同名分支对应。
     JOB_CANCEL,
-    //【讲解 L64】声明 JOB_REPORT 操作编号，与事件分派中的同名分支对应。
     JOB_REPORT,
-    //【讲解 L65】声明 JOB_REPAIR 操作编号，与事件分派中的同名分支对应。
     JOB_REPAIR,
-    //【讲解 L66】声明 JOB_ARCHIVE 操作编号，与事件分派中的同名分支对应。
     JOB_ARCHIVE,
-    //【讲解 L67】声明 JOB_DEACTIVATE 操作编号，与事件分派中的同名分支对应。
     JOB_DEACTIVATE,
-    //【讲解 L68】声明 JOB_INVITE 操作编号，与事件分派中的同名分支对应。
     JOB_INVITE,
-    //【讲解 L69】声明 JOB_METRICS 操作编号，与事件分派中的同名分支对应。
     JOB_METRICS,
-    //【讲解 L70】声明 JOB_UPDATE 操作编号，与事件分派中的同名分支对应。
     JOB_UPDATE,
-    //【讲解 L71】声明 JOB_PROFILE 操作编号，与事件分派中的同名分支对应。
     JOB_PROFILE,
-    //【讲解 L72】声明 JOB_SUGGEST 操作编号，与事件分派中的同名分支对应。
     JOB_SUGGEST,
-    //【讲解 L73】声明 JOB_AGENT 操作编号，与事件分派中的同名分支对应。
     JOB_AGENT
-//【讲解 L74】结束当前代码块或类型声明。
 };
-//【讲解 L75】声明共享的数据类型；字段的容量、所有权和用途见本结构体内各行。
+
+/* ===================== 模块 3：后台任务单 Job 与全局状态 =====================
+ * 功能：Job 是界面线程交给后台线程的"任务单"：这次做什么、用哪些输入、结果写在哪。
+ * 场景：每次点击需要联网的按钮都会 calloc 一个新 Job，任务完成、结果显示后再 free 掉。
+ * 要点：Job 里放的都是数据的副本，后台线程只读写自己的 Job，不碰全局变量，因此不用加锁。
+ */
 typedef struct {
-    //【讲解 L76】声明或更新 devices（设备列表）；按本行表达式保存对应状态。
-    int kind, action, start, end, devices[40], count, metricDevice, inviteDays;
-    //【讲解 L77】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
-    LabClient client;
-    //【讲解 L78】声明或更新 model（当前数据模型）；按本行表达式保存对应状态。
-    LabModel model;
-    //【讲解 L79】声明或更新 row（当前模型记录）、agentRequest（助手请求对象）、agentResult（助手响应对象）；按本行表达式保存对应状态。
-    cJSON *row, *agentRequest, *agentResult;
-    //【讲解 L80】声明或更新 password（密码输入或任务副本）、identity（学号或邮箱输入）；按本行表达式保存对应状态。
-    char identity[256], password[256], name[256], invite[256], date[16], endDate[16], note[2048];
-    //【讲解 L81】声明或更新 keys（每小时幂等键）；按本行表达式保存对应状态。
-    char keys[9][64], message[16384];
-    //【讲解 L82】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
-    int ok, loaded;
-    //【讲解 L83】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
-    HWND target;
-//【讲解 L84】结束当前代码块或类型声明。
+    int kind,         // 任务种类 JOB_xxx
+        action,       // 签到时：1 签到 / 2 签退；助手请求时：1 表示管理员
+        start, end,   // 预约开始小时、结束小时（9 和 11 表示 9:00–11:00）
+        devices[40],  // 用户选中的设备编号
+        count,        // 选中了几台设备
+        metricDevice, // 统计报表要看哪台设备，0 表示全部
+        inviteDays;   // 管理员邀请码有效天数
+    LabClient client; // 登录状态的副本：结构体整体复制，后台线程用自己这份，不受界面线程影响
+    LabModel model;   // 后台重新加载的最新数据，完成后交给界面线程替换全局 model
+    cJSON *row,           // 列表里选中那条记录的深拷贝（防止刷新后原记录被释放）
+          *agentRequest,  // 发给 AI 助手的请求
+          *agentResult;   // AI 助手或"智能推荐"的回复
+    char identity[256], password[256], name[256], invite[256], // 登录/注册框里填的学号、密码、姓名、邀请码
+         date[16], endDate[16], // 日期 "YYYY-MM-DD"（统计报表需要起止两个日期）
+         note[2048];            // 说明框文字：故障说明、给助手的问题、"姓名|学号"
+    char keys[9][64],     // 每小时一个防重复编号（GUID），8~16 点共 9 个
+         message[16384];  // 后台写好的结果提示，界面线程拿来弹窗
+    int ok,     // 操作是否成功
+        loaded; // 数据是否重新加载成功
+    HWND target; // 完成后把结果寄给哪个窗口
 } Job;
-//【讲解 L85】声明或更新 window（主窗口）、password（密码输入或任务副本）、identity（学号或邮箱输入）；按本行表达式保存对应状态。
+// —— 以下是全局状态，只有界面线程读写 ——
+// HWND 是控件句柄：每个窗口、按钮、输入框创建后得到一个句柄，之后靠它读写内容、显示或隐藏。
+// 登录页：学号/邮箱框、密码框、姓名框、邀请码框、登录按钮、注册按钮、说明文字
 static HWND window, identity, password, nameEdit, inviteEdit, loginButton, registerButton, loginInfo;
-//【讲解 L86】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+// 工作区：标签页（已隐藏不用）、记录列表、日期框、开始/结束小时、说明框、底部状态栏、帮助文字、左下角"我是谁"、40 个设备按钮
 static HWND tabs, list, dateEdit, startEdit, endEdit, noteEdit, statusText, helpText, whoText,
-    //【讲解 L87】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     deviceButtons[40];
-//【讲解 L88】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+// actions：19 个操作按钮（顺序与下面的 actionIds 一致）；labels：登录页 4 个输入框的标题
 static HWND actions[19], labels[4];
-//【讲解 L89】声明或更新 font（常规字体）；按本行表达式保存对应状态。
+// 四种字体：正文、粗体、页面标题、大标语
 static HFONT font, bold, headingFont, heroFont;
-//【讲解 L90】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+// 两个下拉框：智能助手给出的方案、"智能推荐"给出的候选时段
 static HWND agentOptions,scheduleOptions;
-//【讲解 L91】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+// 侧栏 5 个导航按钮、"我的故障记录"按钮、"我的"页的使用记录表、助手对话显示框
 static HWND navigation[5],profileFault,usageList,agentReply;
-//【讲解 L92】声明或更新 preview（离线预览标记）；按本行表达式保存对应状态。
+// scrollY：页面向下滚了多少像素；preview：预览模式编号（0 为正常运行）；
+// rendering：正在重填列表时为 1，用来忽略这期间的"选中变化"通知；selectedTable：用户选中的是哪张表
 static int scrollY,preview,rendering,selectedTable;
-//【讲解 L93】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+// 当前选中记录的 id：列表重填后据此恢复选中
 static char selectedId[80];
-//【讲解 L94】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
+// 预览模式的截图保存路径
 static wchar_t previewOutput[MAX_PATH];
-//【讲解 L95】函数 layout：按窗口、页面和滚动状态排列控件；这是原生布局，与浏览器 CSS 实现不同。
+// 提前声明 layout：command 里要用它，而它的定义在后面
 static void layout(void);
-//【讲解 L96】声明或更新 background（背景画刷）；按本行表达式保存对应状态。
+// 背景色画刷，创建一次反复使用
 static HBRUSH background;
-//【讲解 L97】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+// 当前登录的客户端（身份 + 联网函数）
 static LabClient client;
-//【讲解 L98】声明或更新 model（当前数据模型）；按本行表达式保存对应状态。
+// 当前显示的全部云端数据
 static LabModel model;
-//【讲解 L99】声明或更新 agent（当前账号助手状态）；按本行表达式保存对应状态。
+// 智能助手的对话状态
 static LabAgentState agent;
-//【讲解 L100】声明或更新 scheduleCandidates（规则推荐候选方案）；按本行表达式保存对应状态。
+// "智能推荐"返回的候选方案
 static cJSON *scheduleCandidates;
-//【讲解 L101】声明或更新 busy（请求忙标记）、logged（登录标记）、page（当前页面编号）、selected（设备选择状态）；按本行表达式保存对应状态。
+// busy：有任务在后台执行时为 1，按钮全部变灰，防止重复提交；checkingUpdate：正在检查新版本；logged：是否已登录；
+// page：当前页面 0 预约 / 1 我的 / 2 故障 / 3 用户管理 / 4 助手；selected[i]：第 i+1 号设备是否被选中
 static int busy, checkingUpdate, logged, page, selected[40];
-//【讲解 L102】声明或更新 listed（界面行与模型记录映射）；按本行表达式保存对应状态。
+// 列表第 i 行对应模型里的哪条记录（借用指针）。指针数组约 800KB，放在静态区不占栈；上限与 client.c 的 10 万条一致
 static cJSON *listed[100000];
-//【讲解 L103】声明或更新 listedCount（已显示记录数）；按本行表达式保存对应状态。
+// 列表当前有几行
 static int listedCount;
-//【讲解 L104】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+// 19 个操作按钮的编号和文字：两张表按下标一一对应，创建按钮时一起使用
 static const int actionIds[] = {ID_REFRESH, ID_LOGOUT, ID_BOOK,    ID_ATTEND,     ID_CANCEL,
-                                //【讲解 L105】声明 ID_REPORT 操作编号，与事件分派中的同名分支对应。
                                 ID_REPORT,  ID_REPAIR, ID_ARCHIVE, ID_DEACTIVATE, ID_INVITE,
-                                //【讲解 L106】声明 ID_METRICS 操作编号，与事件分派中的同名分支对应。
                                 ID_METRICS, ID_UPDATE, ID_PROFILE, ID_SUGGEST,    ID_AGENT, ID_AGENT_CONFIRM, ID_EXPORT_BOOKINGS, ID_EXPORT_ISSUES, ID_USE_CANDIDATE};
-//【讲解 L107】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
 static const wchar_t *actionNames[] = {L"刷新",         L"退出账号",     L"确认预约 →", L"签到 / 签退",
-                                       //【讲解 L108】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                                        L"取消预约",     L"报告设备故障",     L"完成维修",     L"归档故障",
-                                       //【讲解 L109】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                                        L"停用学生",     L"生成邀请码",   L"统计报表",     L"检查版本",
-                                       //【讲解 L110】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                                        L"修改本人资料", L"智能推荐", L"发送", L"选择此方案", L"导出完整预约", L"导出完整故障", L"采用推荐方案"};
-//【讲解 L111】函数 wide：把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
+
+/* ===================== 模块 4：文字编码与常用小工具 =====================
+ * 功能：解决"业务层用 UTF-8、Windows 控件用 UTF-16"的转换，以及取时间、弹提示、创建控件、写列表格子等
+ *       反复要做的小事。
+ */
+// UTF-8 → UTF-16：业务层和云端都用 UTF-8，Windows 控件要宽字符。返回的内存由调用者 free
 static wchar_t *wide(const char *s) {
-    //【讲解 L112】把 UTF-8 转为 Windows 宽字符。
+    // 第一次调用只问"需要多少个宽字符"（目标缓冲区传 NULL）
     int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
-    //【讲解 L113】申请并清零堆内存。
+    // 按需分配并清零；n 为 0 时也至少分配 1 个，保证返回空串而不是 NULL
     wchar_t *p = calloc(n ? n : 1, sizeof(wchar_t));
-    //【讲解 L114】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 第二次调用才真正转换
     if (p && n)
-        //【讲解 L115】把 UTF-8 转为 Windows 宽字符。
         MultiByteToWideChar(CP_UTF8, 0, s, -1, p, n);
-    //【讲解 L116】结束当前函数并返回 p；具体成功或失败含义见函数说明。
     return p;
-//【讲解 L117】结束当前代码块。
 }
-//【讲解 L118】函数 set_utf8：转换后设置 Windows 控件文字，并释放临时宽字符串。
+// 把 UTF-8 文字显示到控件上：转换 → 设置 → 释放临时内存
 static void set_utf8(HWND h, const char *s) {
-    //【讲解 L119】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
     wchar_t *p = wide(s);
-    //【讲解 L120】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (p) {
-        //【讲解 L121】更新控件文字。
         SetWindowTextW(h, p);
-        //【讲解 L122】释放堆内存。
         free(p);
-    //【讲解 L123】结束当前代码块。
     }
-//【讲解 L124】结束当前代码块。
 }
-//【讲解 L125】函数 get_utf8：读取 Windows 控件宽字符文本，转换为业务层 UTF-8，写入有限容量缓冲区。
+// 读出控件里的文字并转成 UTF-8，最多写 n 字节；转换失败（如超长）就给空串
 static void get_utf8(HWND h, char *s, int n) {
-    //【讲解 L126】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     wchar_t b[2048];
-    //【讲解 L127】执行 GetWindowTextW，参数沿用本行给出的对象、标志和容量。
     GetWindowTextW(h, b, 2048);
-    //【讲解 L128】检查本行条件，满足后执行紧随其后的语句或代码块；把宽字符转回 UTF-8。
     if (!WideCharToMultiByte(CP_UTF8, 0, b, -1, s, n, NULL, NULL))
-        //【讲解 L129】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         s[0] = 0;
-//【讲解 L130】结束当前代码块。
 }
-//【讲解 L131】函数 tell：显示平台消息提示；网络结果由界面线程调用此函数展示。
+// 弹出提示框，成功和失败消息都靠它
 static void tell(const char *s, UINT flags) {
-    //【讲解 L132】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
     wchar_t *p = wide(s);
-    //【讲解 L133】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (p) {
-        //【讲解 L134】声明或更新 window（主窗口）；按本行表达式保存对应状态。
         MessageBoxW(window, p, L"实验室预约 · 原生 C", flags);
-        //【讲解 L135】释放堆内存。
         free(p);
-    //【讲解 L136】结束当前代码块。
     }
-//【讲解 L137】结束当前代码块。
 }
-//【讲解 L138】函数 admin：根据云端加载的 session.role 判断是否显示管理入口；不能替代服务端权限规则。
+// 当前账号是不是管理员：只决定显示哪些按钮，真正的权限由云端检查
 static int admin(void) { return !strcmp(client.session.role, "admin"); }
-//【讲解 L139】函数 now_ms：取得当前 Unix 毫秒；比较预约区间时统一使用绝对时间。
+// 取当前时间（Unix 毫秒）。Windows 的 FILETIME 从 1601 年起每 100 纳秒计 1
 static int64_t now_ms(void) {
-    //【讲解 L140】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     FILETIME f;
-    //【讲解 L141】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     ULARGE_INTEGER u;
-    //【讲解 L142】执行 GetSystemTimeAsFileTime，参数沿用本行给出的对象、标志和容量。
     GetSystemTimeAsFileTime(&f);
-    //【讲解 L143】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    // FILETIME 是两个 32 位数，拼成一个 64 位整数
     u.LowPart = f.dwLowDateTime;
-    //【讲解 L144】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     u.HighPart = f.dwHighDateTime;
-    //【讲解 L145】结束当前函数并返回 (int64_t)(u.QuadPart / 10000 - 11644473600000ULL)；具体成功或失败含义见函数说明。
+    // ÷10000 变成毫秒，再减去 1601 年到 1970 年之间的毫秒数，得到 Unix 时间
     return (int64_t)(u.QuadPart / 10000 - 11644473600000ULL);
-//【讲解 L146】结束当前代码块。
 }
-//【讲解 L147】函数 date_string：将日期控件的年月日格式化为 YYYY-MM-DD。
+// 把日期框里选的日期写成 "2026-11-05" 格式，之后比较和发请求都用这个格式
 static void date_string(char out[16]) {
-    //【讲解 L148】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     SYSTEMTIME t;
-    //【讲解 L149】执行 DateTime_GetSystemtime，参数沿用本行给出的对象、标志和容量。
     DateTime_GetSystemtime(dateEdit, &t);
-    //【讲解 L150】按容量格式化 UTF-8 文本。
     snprintf(out, 16, "%04u-%02u-%02u", t.wYear, t.wMonth, t.wDay);
-//【讲解 L151】结束当前代码块。
 }
-//【讲解 L152】函数 today_beijing：以 UTC 加八小时确定北京当天，再设置日期控件。
+// 启动时把日期框设成北京时间的今天：取 UTC 时间加 8 小时，不依赖电脑本地时区设置
 static void today_beijing(void) {
-    //【讲解 L153】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     FILETIME f;
-    //【讲解 L154】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     ULARGE_INTEGER u;
-    //【讲解 L155】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     SYSTEMTIME t;
-    //【讲解 L156】执行 GetSystemTimeAsFileTime，参数沿用本行给出的对象、标志和容量。
     GetSystemTimeAsFileTime(&f);
-    //【讲解 L157】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     u.LowPart = f.dwLowDateTime;
-    //【讲解 L158】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     u.HighPart = f.dwHighDateTime;
-    //【讲解 L159】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    // 8 小时 = 8×3600 秒 × 10^7（FILETIME 的单位是 100 纳秒）
     u.QuadPart += 8ULL * 3600 * 10000000;
-    //【讲解 L160】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     f.dwLowDateTime = u.LowPart;
-    //【讲解 L161】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     f.dwHighDateTime = u.HighPart;
-    //【讲解 L162】执行 FileTimeToSystemTime，参数沿用本行给出的对象、标志和容量。
     FileTimeToSystemTime(&f, &t);
-    //【讲解 L163】执行 DateTime_SetSystemtime，参数沿用本行给出的对象、标志和容量。
     DateTime_SetSystemtime(dateEdit, GDT_VALID, &t);
-//【讲解 L164】结束当前代码块。
 }
-//【讲解 L165】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
+// 创建一个子控件（按钮、输入框、列表……）并设好字体。id 就是以后 WM_COMMAND 里收到的编号
 static HWND control(const wchar_t *cls, const wchar_t *text, DWORD style, int id, int x, int y, int w,
-                    //【讲解 L166】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
                     int h) {
-    //【讲解 L167】声明或更新 window（主窗口）；按本行表达式保存对应状态。
     HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, x, y, w, h, window,
-                             //【讲解 L168】执行 GetModuleHandleW，参数沿用本行给出的对象、标志和容量。
                              (HMENU)(INT_PTR)id, GetModuleHandleW(NULL), NULL);
-    //【讲解 L169】同步读写控件状态。
     SendMessageW(c, WM_SETFONT, (WPARAM)font, TRUE);
-    //【讲解 L170】结束当前函数并返回 c；具体成功或失败含义见函数说明。
     return c;
-//【讲解 L171】结束当前代码块。
 }
-//【讲解 L172】函数 add_cell：向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
+// 往列表第 row 行第 col 列写一个格子：第 0 列要"插入新行"，其他列是"修改已有行"
 static void add_cell(int row, int col, const char *s) {
-    //【讲解 L173】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
     wchar_t *w = wide(s);
-    //【讲解 L174】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     LVITEMW item = {0};
-    //【讲解 L175】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     item.mask = LVIF_TEXT;
-    //【讲解 L176】声明或更新 row（当前模型记录）；按本行表达式保存对应状态。
     item.iItem = row;
-    //【讲解 L177】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     item.iSubItem = col;
-    //【讲解 L178】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     item.pszText = w;
-    //【讲解 L179】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (col == 0)
-        //【讲解 L180】同步读写控件状态。
         SendMessageW(list, LVM_INSERTITEMW, 0, (LPARAM)&item);
-    //【讲解 L181】处理另一分支。
     else
-        //【讲解 L182】同步读写控件状态。
         SendMessageW(list, LVM_SETITEMTEXTW, (WPARAM)row, (LPARAM)&item);
-    //【讲解 L183】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // "我的"页有第二张使用记录表，内容同步写一份
     if (page == 1 && usageList) {
-        //【讲解 L184】检查本行条件，满足后执行紧随其后的语句或代码块；同步读写控件状态。
         if(col==0)SendMessageW(usageList,LVM_INSERTITEMW,0,(LPARAM)&item);
-        //【讲解 L185】处理另一分支；同步读写控件状态。
         else SendMessageW(usageList,LVM_SETITEMTEXTW,(WPARAM)row,(LPARAM)&item);
-    //【讲解 L186】结束当前代码块。
     }
-    //【讲解 L187】释放堆内存。
     free(w);
-//【讲解 L188】结束当前代码块。
 }
-//【讲解 L189】函数 column：设置 Windows 列表的列名及宽度。
+// 给列表加一列表头（标题和宽度），"我的"页的第二张表同步加
 static void column(int i, const wchar_t *title, int width) {
-    //【讲解 L190】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     LVCOLUMNW c = {0};
-    //【讲解 L191】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     c.mask = LVCF_TEXT | LVCF_WIDTH;
-    //【讲解 L192】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     c.pszText = (LPWSTR)title;
-    //【讲解 L193】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     c.cx = width;
-    //【讲解 L194】同步读写控件状态。
     SendMessageW(list, LVM_INSERTCOLUMNW, (WPARAM)i, (LPARAM)&c);
-    //【讲解 L195】检查本行条件，满足后执行紧随其后的语句或代码块；同步读写控件状态。
     if(page==1&&usageList)SendMessageW(usageList,LVM_INSERTCOLUMNW,(WPARAM)i,(LPARAM)&c);
-//【讲解 L196】结束当前代码块。
 }
-//【讲解 L197】函数 render：按页面、账号、日期和设备状态更新控件内容；列表行保存模型记录引用，不负责云端写入。
+
+/* ===================== 模块 5：刷新界面内容 render =====================
+ * 功能：根据当前页面，把内存里的数据（model）填进列表和下拉框，并更新左下角"我是谁"。
+ * 场景：登录成功、切换页面、改日期或时段、后台刷新完成后都会调用。它只读本地数据，不联网。
+ */
 static void render(void) {
-    //【讲解 L198】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
     const cJSON *r;
-    //【讲解 L199】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
     char b[1024], d[16];
-    //【讲解 L200】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
     int i = 0;
-    //【讲解 L201】调用 date_string，将日期控件的年月日格式化为 YYYY-MM-DD。
+    // 步骤 1：取日期框当前日期，预约页只显示这一天的记录
     date_string(d);
-    //【讲解 L202】检查本行条件，满足后执行紧随其后的语句或代码块；调用 lab_agent_clear，释放助手历史及最近响应并清空状态；调用 lab_agent_bind，把助手状态绑定到账号。
+    // 步骤 2：智能助手——未登录就清空对话；已登录就绑定到当前账号（换了账号会自动清掉旧对话）
     if(!logged)lab_agent_clear(&agent);else lab_agent_bind(&agent,client.session.uid);
-    //【讲解 L203】调用 lab_agent_transcript，把内存中的对话拼成有容量限制的中文显示文本；调用 set_utf8，转换后设置 Windows 控件文字，并释放临时宽字符串。
-    char transcript[16384];lab_agent_transcript(&agent,transcript,sizeof(transcript));set_utf8(agentReply,transcript);
-    //【讲解 L204】同步读写控件状态。
+    char transcript[16384];                                     // 对话文本缓冲区
+    lab_agent_transcript(&agent,transcript,sizeof(transcript)); // 把历史拼成"我：… 助手：…"
+    set_utf8(agentReply,transcript);                            // 显示到助手对话框
+    // 步骤 3：重填"助手方案"下拉框：先清空，再把每个候选方案写成一行文字加进去
     SendMessageW(agentOptions,CB_RESETCONTENT,0,0);const cJSON *proposal;int option=0;
-    //【讲解 L205】遍历 JSON 数组；调用 lab_agent_proposals，借用最近响应中的候选方案数组；调用 lab_agent_option，把一个候选方案的日期、小时、设备拼成下拉框摘要，并在写入时检查剩余容量。
-    cJSON_ArrayForEach(proposal,lab_agent_proposals(&agent)){char label[1024];lab_agent_option(proposal,++option,label,sizeof(label));wchar_t *value=wide(label);SendMessageW(agentOptions,CB_ADDSTRING,0,(LPARAM)value);free(value);}
-    //【讲解 L206】同步读写控件状态。
-    SendMessageW(agentOptions,CB_SETCURSEL,option?0:(WPARAM)-1,0);
-    //【讲解 L207】同步读写控件状态。
+    cJSON_ArrayForEach(proposal,lab_agent_proposals(&agent)){
+        char label[1024];
+        lab_agent_option(proposal,++option,label,sizeof(label)); // 生成"方案 1 · 日期 时间 · 设备 #03"
+        wchar_t *value=wide(label);
+        SendMessageW(agentOptions,CB_ADDSTRING,0,(LPARAM)value);
+        free(value);
+    }
+    SendMessageW(agentOptions,CB_SETCURSEL,option?0:(WPARAM)-1,0); // 有方案默认选第一个，没有就不选
+    // 步骤 4：重填"智能推荐"下拉框。推荐结果的格式和助手方案不同，
+    // 这里临时包一层 {"candidate":{"items":[候选]}}，就能复用 lab_agent_option 生成文字，用完立刻删除
     SendMessageW(scheduleOptions,CB_RESETCONTENT,0,0);
-    //【讲解 L208】遍历 JSON 数组；创建 JSON 对象；创建 JSON 数组（字段 items）。
-    const cJSON *candidate;int candidateCount=0;cJSON_ArrayForEach(candidate,scheduleCandidates){char label[1024];cJSON *wrapper=cJSON_CreateObject(),*body=cJSON_CreateObject(),*items=cJSON_CreateArray();cJSON_AddItemToArray(items,cJSON_Duplicate(candidate,1));cJSON_AddItemToObject(body,"items",items);cJSON_AddItemToObject(wrapper,"candidate",body);lab_agent_option(wrapper,++candidateCount,label,sizeof(label));cJSON_Delete(wrapper);
-    //【讲解 L209】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free；同步读写控件状态；释放堆内存。
-    wchar_t *value=wide(label);SendMessageW(scheduleOptions,CB_ADDSTRING,0,(LPARAM)value);free(value);}
-    //【讲解 L210】同步读写控件状态。
+    const cJSON *candidate;int candidateCount=0;cJSON_ArrayForEach(candidate,scheduleCandidates){
+        char label[1024];
+        cJSON *wrapper=cJSON_CreateObject(),*body=cJSON_CreateObject(),*items=cJSON_CreateArray();
+        cJSON_AddItemToArray(items,cJSON_Duplicate(candidate,1)); // 放进去的是深拷贝，删除 wrapper 时不会误删原数据
+        cJSON_AddItemToObject(body,"items",items);
+        cJSON_AddItemToObject(wrapper,"candidate",body);
+        lab_agent_option(wrapper,++candidateCount,label,sizeof(label));
+        cJSON_Delete(wrapper); // 删外层会连带删除 body、items 和那份拷贝
+        wchar_t *value=wide(label);SendMessageW(scheduleOptions,CB_ADDSTRING,0,(LPARAM)value);free(value);}
     SendMessageW(scheduleOptions,CB_SETCURSEL,candidateCount?0:(WPARAM)-1,0);
-    //【讲解 L211】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    // 步骤 5：清空两张列表的旧行和旧列。rendering=1 期间，删行产生的"选中变化"通知会被忽略
     rendering=1;
-    //【讲解 L212】执行 ListView_DeleteAllItems，参数沿用本行给出的对象、标志和容量。
     ListView_DeleteAllItems(usageList);
-    //【讲解 L213】条件成立时继续循环。
     while(ListView_DeleteColumn(usageList,0)){}
-    //【讲解 L214】同步读写控件状态。
+    // 暂停列表重画，全部填完再一次性画出来，避免闪烁
     SendMessageW(list, WM_SETREDRAW, FALSE, 0);
-    //【讲解 L215】执行 ListView_DeleteAllItems，参数沿用本行给出的对象、标志和容量。
     ListView_DeleteAllItems(list);
-    //【讲解 L216】条件成立时继续循环。
     while (ListView_DeleteColumn(list, 0)) {
-    //【讲解 L217】结束当前代码块。
     }
-    //【讲解 L218】声明或更新 listedCount（已显示记录数）；按本行表达式保存对应状态。
     listedCount = 0;
-    //【讲解 L219】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 步骤 6：按页面填表。页面 0（预约）和 1（我的）都显示预约记录，只是列和筛选条件不同
     if (page < 2) {
-        //【讲解 L220】调用 column，设置 Windows 列表的列名及宽度。
         column(0, L"设备", 75);
-        //【讲解 L221】调用 column，设置 Windows 列表的列名及宽度。
         column(1, L"日期（北京）", 120);
-        //【讲解 L222】调用 column，设置 Windows 列表的列名及宽度。
         column(2, L"时段", 100);
-        //【讲解 L223】调用 column，设置 Windows 列表的列名及宽度。
         column(3, L"状态", 95);
-        //【讲解 L224】调用 column，设置 Windows 列表的列名及宽度。
         column(4, page==1?L"实际签到":L"预约人", 160);
-        //【讲解 L225】检查本行条件，满足后执行紧随其后的语句或代码块；调用 column，设置 Windows 列表的列名及宽度。
         if(page==1){column(5,L"实际签退",160);column(6,L"实际使用",100);}
-        //【讲解 L226】遍历 JSON 数组。
+        // 逐条检查预约记录
         cJSON_ArrayForEach(r, model.bookings) {
-            //【讲解 L227】检查本行条件，满足后执行紧随其后的语句或代码块；比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
+            // "我的"页：只显示自己的预约
             if (page == 1 && strcmp(lab_str(r, "user_id"), client.session.uid))
-                //【讲解 L228】跳过当前记录，继续下一次循环。
                 continue;
-            //【讲解 L229】检查本行条件，满足后执行紧随其后的语句或代码块；比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针；调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
+            // 预约页：只显示所选日期的；学生只看到自己的，管理员看到所有人的
             if (page == 0 && (strcmp(lab_str(r, "reservation_date"), d)||(!admin()&&strcmp(lab_str(r,"user_id"),client.session.uid))))
-                //【讲解 L230】跳过当前记录，继续下一次循环。
                 continue;
-            //【讲解 L231】检查本行条件，满足后执行紧随其后的语句或代码块。
+            // 超过数组容量就停，防止 listed 越界
             if (i >= 100000)
-                //【讲解 L232】结束当前最近的循环或 switch 分支。
                 break;
-            //【讲解 L233】声明或更新 listed（界面行与模型记录映射）；按本行表达式保存对应状态。
+            // 记下第 i 行对应哪条记录，之后点按钮时能找回它
             listed[i] = (cJSON *)r;
-            //【讲解 L234】按容量格式化 UTF-8 文本；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
             snprintf(b, sizeof(b), "%02d", lab_int(r, "device_number"));
-            //【讲解 L235】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
             add_cell(i, 0, b);
-            //【讲解 L236】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 1, lab_str(r, "reservation_date"));
-            //【讲解 L237】按容量格式化 UTF-8 文本；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
+            // 时段显示成 "09:00–10:00"（每条预约记录就是一小时）
             snprintf(b, sizeof(b), "%02d:00–%02d:00", lab_int(r, "start_hour"), lab_int(r, "start_hour") + 1);
-            //【讲解 L238】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
             add_cell(i, 2, b);
-            //【讲解 L239】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 ui_status，将云端状态码转换为中文展示，未识别值保留原文；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 3, ui_status(lab_str(r, "status")));
-            //【讲解 L240】调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
+            // 预约人：先拿到 user_id，再去用户表里找对应的姓名
             const char *owner = lab_str(r, "user_id");
-            //【讲解 L241】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
             const cJSON *p;
-            //【讲解 L242】遍历 JSON 数组；比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             cJSON_ArrayForEach(p, model.profiles) if (!strcmp(lab_str(p, "id"), owner)) {
-                //【讲解 L243】调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                 owner = lab_str(p, "display_name");
-                //【讲解 L244】结束当前最近的循环或 switch 分支。
                 break;
-            //【讲解 L245】结束当前代码块。
             }
-            //【讲解 L246】检查本行条件，满足后执行紧随其后的语句或代码块。
+            // "我的"页额外显示实际签到、签退时间和使用时长
             if(page==1){
-                //【讲解 L247】调用 ui_usage，按 reservation_id 查找对应的签到签退记录，返回模型内部借用指针。
                 const cJSON *u=ui_usage(&model,r);char value[96];
-                //【讲解 L248】调用 ui_time，将云端时间转换为北京时间文本；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针；调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
                 ui_time(lab_str(u,"checked_in_at"),value,sizeof(value));add_cell(i,4,value);
-                //【讲解 L249】调用 ui_time，将云端时间转换为北京时间文本；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针；调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
                 ui_time(lab_str(u,"checked_out_at"),value,sizeof(value));add_cell(i,5,value);
-                //【讲解 L250】调用 ui_duration，有签到和有效签退时显示分钟差，否则显示进行中或占位符；调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
                 ui_duration(u,value,sizeof(value));add_cell(i,6,value);
-            //【讲解 L251】处理另一分支；调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
             }else add_cell(i, 4, owner);
-            //【讲解 L252】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             i++;
-        //【讲解 L253】结束当前代码块。
         }
-    //【讲解 L254】上一条件不成立时检查下一条件。
+    // 页面 2（故障记录）：设备、状态、故障说明、处理记录、报告时间
     } else if (page == 2) {
-        //【讲解 L255】调用 column，设置 Windows 列表的列名及宽度。
         column(0, L"设备", 65);
-        //【讲解 L256】调用 column，设置 Windows 列表的列名及宽度。
         column(1, L"状态", 85);
-        //【讲解 L257】调用 column，设置 Windows 列表的列名及宽度。
         column(2, L"故障说明", 290);
-        //【讲解 L258】调用 column，设置 Windows 列表的列名及宽度。
         column(3, L"处理记录", 230);
-        //【讲解 L259】调用 column，设置 Windows 列表的列名及宽度。
         column(4, L"报告时间", 190);
-        //【讲解 L260】遍历 JSON 数组。
         cJSON_ArrayForEach(r, model.issues) {
-            //【讲解 L261】检查本行条件，满足后执行紧随其后的语句或代码块。
             if (i >= 100000)
-                //【讲解 L262】结束当前最近的循环或 switch 分支。
                 break;
-            //【讲解 L263】声明或更新 listed（界面行与模型记录映射）；按本行表达式保存对应状态。
             listed[i] = (cJSON *)r;
-            //【讲解 L264】按容量格式化 UTF-8 文本；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
             snprintf(b, sizeof(b), "%02d", lab_int(r, "device_number"));
-            //【讲解 L265】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换。
             add_cell(i, 0, b);
-            //【讲解 L266】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 ui_status，将云端状态码转换为中文展示，未识别值保留原文；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 1, ui_status(lab_str(r, "status")));
-            //【讲解 L267】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 2, lab_str(r, "description"));
-            //【讲解 L268】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 3, lab_str(r, "resolution_note"));
-            //【讲解 L269】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 4, lab_str(r, "created_at"));
-            //【讲解 L270】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             i++;
-        //【讲解 L271】结束当前代码块。
         }
-    //【讲解 L272】上一条件不成立时检查下一条件。
+    // 页面 3（用户管理，仅管理员）：姓名、学号、角色、是否已停用
     } else if(page==3) {
-        //【讲解 L273】调用 column，设置 Windows 列表的列名及宽度。
         column(0, L"姓名", 180);
-        //【讲解 L274】调用 column，设置 Windows 列表的列名及宽度。
         column(1, L"学号 / 登录名", 220);
-        //【讲解 L275】调用 column，设置 Windows 列表的列名及宽度。
         column(2, L"角色", 90);
-        //【讲解 L276】调用 column，设置 Windows 列表的列名及宽度。
         column(3, L"账号状态", 110);
-        //【讲解 L277】遍历 JSON 数组。
         cJSON_ArrayForEach(r, model.profiles) {
-            //【讲解 L278】检查本行条件，满足后执行紧随其后的语句或代码块。
             if (i >= 100000)
-                //【讲解 L279】结束当前最近的循环或 switch 分支。
                 break;
-            //【讲解 L280】声明或更新 listed（界面行与模型记录映射）；按本行表达式保存对应状态。
             listed[i] = (cJSON *)r;
-            //【讲解 L281】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 0, lab_str(r, "display_name"));
-            //【讲解 L282】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 1, lab_str(r, "login_id"));
-            //【讲解 L283】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             add_cell(i, 2, lab_str(r, "role"));
-            //【讲解 L284】调用 add_cell，向列表指定行列填入文字，处理 UTF-8 与宽字符转换；按精确字段名借用 JSON 子节点（字段 active）。
             add_cell(i, 3, cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(r, "active")) ? "已停用" : "可用");
-            //【讲解 L285】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             i++;
-        //【讲解 L286】结束当前代码块。
         }
-    //【讲解 L287】结束当前代码块。
     }
-    //【讲解 L288】声明或更新 listedCount（已显示记录数）；按本行表达式保存对应状态。
+    // 步骤 7：之前选中过某条记录的话，按 id 找到它并恢复选中（刷新后用户的选择不会丢）
     listedCount = i;
-    //【讲解 L289】按本行初值、条件和步长循环；比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
     for(int row=0;row<i;row++)if(*selectedId&&!strcmp(lab_str(listed[row],"id"),selectedId)){
-        //【讲解 L290】声明或更新 row（当前模型记录）；按本行表达式保存对应状态。
         ListView_SetItemState(list,row,LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);
-        //【讲解 L291】检查本行条件，满足后执行紧随其后的语句或代码块。
         if(page==1)ListView_SetItemState(usageList,row,LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);
-    //【讲解 L292】结束当前代码块。
     }
-    //【讲解 L293】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    // 步骤 8：恢复重画
     rendering=0;
-    //【讲解 L294】同步读写控件状态。
     SendMessageW(list, WM_SETREDRAW, TRUE, 0);
-    //【讲解 L295】请求重绘界面。
     InvalidateRect(list, NULL, TRUE);
-    //【讲解 L296】按容量格式化 UTF-8 文本；调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
+    // 步骤 9：左下角显示"姓名 · 学生/管理员 · 版本号"
     snprintf(b, sizeof(b), "%s  ·  %s  ·  原生 C %s", client.session.name, admin() ? "管理员" : "学生",
-             //【讲解 L297】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
              LAB_NATIVE_VERSION);
-    //【讲解 L298】调用 set_utf8，转换后设置 Windows 控件文字，并释放临时宽字符串。
     set_utf8(whoText, b);
-    //【讲解 L299】按本行初值、条件和步长循环。
+    // 步骤 10：通知 40 个设备按钮和整个窗口重画（设备颜色取决于最新数据）
     for (i = 0; i < 40; i++)
-        //【讲解 L300】请求重绘界面。
         InvalidateRect(deviceButtons[i], NULL, TRUE);
-    //【讲解 L301】请求重绘界面。
     InvalidateRect(window,NULL,TRUE);
-//【讲解 L302】结束当前代码块。
 }
-//【讲解 L303】函数 visibility：根据登录态、页面、角色及 busy 状态切换控件可见性和可操作性。
+
+/* ===================== 模块 6：控件显示与隐藏 visibility =====================
+ * 功能：决定"现在该看到哪些控件、哪些按钮能点"。未登录只看到登录表单；登录后按页面和角色显示。
+ * 场景：所有页面共用同一个窗口。切换页面不是换窗口，而是把不属于当前页的控件藏起来。
+ */
 static void visibility(void) {
-    //【讲解 L304】声明或更新 password（密码输入或任务副本）、identity（学号或邮箱输入）；按本行表达式保存对应状态。
+    // 登录表单：未登录时显示，登录后隐藏
     HWND auth[] = {identity, password, nameEdit, inviteEdit, loginButton, registerButton, loginInfo};
-    //【讲解 L305】按本行初值、条件和步长循环。
     for (size_t i = 0; i < sizeof(auth) / sizeof(auth[0]); i++)
-        //【讲解 L306】设置窗口或控件显示状态。
         ShowWindow(auth[i], logged ? SW_HIDE : SW_SHOW);
-    //【讲解 L307】按本行初值、条件和步长循环。
     for (int i = 0; i < 4; i++)
-        //【讲解 L308】设置窗口或控件显示状态。
         ShowWindow(labels[i], logged ? SW_HIDE : SW_SHOW);
-    //【讲解 L309】设置窗口或控件显示状态。
+    // 顶部标签页是旧版导航，已改用左侧侧栏，始终隐藏
     ShowWindow(tabs,SW_HIDE);
-    //【讲解 L310】按本行初值、条件和步长循环；设置窗口或控件显示状态；调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
+    // 侧栏 5 个按钮：第 3、4 个（故障记录、用户管理）只有管理员能看到
     for(int i=0;i<5;i++)ShowWindow(navigation[i],logged&&((i!=2&&i!=3)||admin())?SW_SHOW:SW_HIDE);
-    //【讲解 L311】设置窗口或控件显示状态。
+    // 下面每一行：某个控件只在特定页面出现，写法是"条件 ? SW_SHOW : SW_HIDE"
     ShowWindow(profileFault,logged&&page==1?SW_SHOW:SW_HIDE);
-    //【讲解 L312】设置窗口或控件显示状态。
     ShowWindow(usageList,logged&&page==1?SW_SHOW:SW_HIDE);
-    //【讲解 L313】设置窗口或控件显示状态；读取数组元素数。
+    // 推荐方案、助手方案两个下拉框：有内容时才出现
     ShowWindow(scheduleOptions,logged&&page==0&&cJSON_GetArraySize(scheduleCandidates)>0?SW_SHOW:SW_HIDE);
-    //【讲解 L314】设置窗口或控件显示状态；读取数组元素数；调用 lab_agent_proposals，借用最近响应中的候选方案数组。
     ShowWindow(agentOptions,logged&&page==4&&cJSON_GetArraySize(lab_agent_proposals(&agent))>0?SW_SHOW:SW_HIDE);
-    //【讲解 L315】设置窗口或控件显示状态。
     ShowWindow(agentReply,logged&&page==4?SW_SHOW:SW_HIDE);
-    //【讲解 L316】设置窗口或控件显示状态。
     ShowWindow(list, logged&&page!=4 ? SW_SHOW : SW_HIDE);
-    //【讲解 L317】设置窗口或控件显示状态。
     ShowWindow(whoText, logged ? SW_SHOW : SW_HIDE);
-    //【讲解 L318】设置窗口或控件显示状态。
     ShowWindow(dateEdit, logged&&page==0 ? SW_SHOW : SW_HIDE);
-    //【讲解 L319】设置窗口或控件显示状态。
     ShowWindow(startEdit, logged&&page==0 ? SW_SHOW : SW_HIDE);
-    //【讲解 L320】设置窗口或控件显示状态。
     ShowWindow(endEdit, logged&&page==0 ? SW_SHOW : SW_HIDE);
-    //【讲解 L321】设置窗口或控件显示状态。
     ShowWindow(noteEdit, logged ? SW_SHOW : SW_HIDE);
-    //【讲解 L322】设置窗口或控件显示状态。
     ShowWindow(helpText, logged ? SW_SHOW : SW_HIDE);
-    //【讲解 L323】按本行初值、条件和步长循环。
     for (int i = 0; i < 40; i++)
-        //【讲解 L324】设置窗口或控件显示状态。
         ShowWindow(deviceButtons[i], logged && page == 0 ? SW_SHOW : SW_HIDE);
-    //【讲解 L325】按本行初值、条件和步长循环。
+    // 19 个操作按钮逐个判断：默认登录后可见，再按按钮种类覆盖规则
     for (int i = 0; i < 19; i++) {
-        //【讲解 L326】声明或更新 logged（登录标记）；按本行表达式保存对应状态。
         int show = logged;
-        //【讲解 L327】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
         int id = actionIds[i];
-        //【讲解 L328】检查本行条件，满足后执行紧随其后的语句或代码块；调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
+        // 导出：管理员在故障页或用户管理页
         if(id==ID_EXPORT_BOOKINGS||id==ID_EXPORT_ISSUES)show=logged&&admin()&&(page==2||page==3);
-        //【讲解 L329】检查本行条件，满足后执行紧随其后的语句或代码块；读取数组元素数。
+        // "采用推荐方案"：预约页且已有推荐结果
         if(id==ID_USE_CANDIDATE)show=logged&&page==0&&cJSON_GetArraySize(scheduleCandidates)>0;
-        //【讲解 L330】检查本行条件，满足后执行紧随其后的语句或代码块；读取数组元素数；调用 lab_agent_proposals，借用最近响应中的候选方案数组。
+        // "选择此方案"：助手页且助手给出了方案
         if(id==ID_AGENT_CONFIRM)show=logged&&page==4&&cJSON_GetArraySize(lab_agent_proposals(&agent))>0;
-        //【讲解 L331】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // "发送"：助手页；管理员在用户管理页也能用
         if (id == ID_AGENT)
-            //【讲解 L332】调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
             show = logged && (page == 4 || (page == 3 && admin()));
-        //【讲解 L333】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (id == ID_PROFILE)show=logged&&page==1;
-        //【讲解 L334】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // "确认预约""智能推荐"：只在预约页
         if (id == ID_BOOK || id == ID_SUGGEST)
-            //【讲解 L335】声明或更新 logged（登录标记）、page（当前页面编号）；按本行表达式保存对应状态。
             show = logged && page == 0;
-        //【讲解 L336】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // "签到/签退"在我的页；"取消预约"在我的页，管理员在预约页也能取消别人的
         if (id == ID_ATTEND || id == ID_CANCEL)
-            //【讲解 L337】调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
             show = logged && (page==1||(id==ID_CANCEL&&page==0&&admin()));
-        //【讲解 L338】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // "报告设备故障"：故障页或预约页
         if (id == ID_REPORT)
-            //【讲解 L339】声明或更新 logged（登录标记）、page（当前页面编号）；按本行表达式保存对应状态。
             show = logged && (page == 2 || page == 0);
-        //【讲解 L340】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // "完成维修""归档故障"：管理员在故障页
         if (id == ID_REPAIR || id == ID_ARCHIVE)
-            //【讲解 L341】调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
             show = logged && page == 2 && admin();
-        //【讲解 L342】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // "停用学生""生成邀请码""统计报表"：管理员在用户管理页
         if (id == ID_DEACTIVATE || id == ID_INVITE || id == ID_METRICS)
-            //【讲解 L343】调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
             show = logged && page == 3 && admin();
-        //【讲解 L344】设置窗口或控件显示状态。
         ShowWindow(actions[i], show ? SW_SHOW : SW_HIDE);
-        //【讲解 L345】设置控件能否操作。
+        // 有后台任务时全部变灰，防止重复点击；检查版本期间"检查版本"按钮单独变灰
         EnableWindow(actions[i], !busy && (id != ID_UPDATE || !checkingUpdate));
-    //【讲解 L346】结束当前代码块。
     }
-    //【讲解 L347】设置控件能否操作。
     EnableWindow(loginButton, !busy);
-    //【讲解 L348】设置控件能否操作。
     EnableWindow(registerButton, !busy);
-    //【讲解 L349】设置控件能否操作。
     EnableWindow(tabs, !busy);
-    //【讲解 L350】更新控件文字。
+    // 页面顶部的帮助文字随页面变化
     SetWindowTextW(
-        //【讲解 L351】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
         helpText, page == 0 ? L"选择日期、开始/结束小时和设备；多小时预约逐时提交。设备颜色对应所选整个时段。"
-                  //【讲解 L352】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
                   : page == 1
-                      //【讲解 L353】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                       ? L"选择自己的预约，再点击签到 / 签退。签到仅限预约时段（北京时间），签退需先签到。"
-                  //【讲解 L354】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
                   : page == 4 ? L"根据设备、日期和时段获取建议；确认后再预约。"
-                  //【讲解 L355】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
                   : page == 2 ? L"在说明框输入故障/维修说明。报告故障使用预约页中选中的第一台设备。"
-                              //【讲解 L356】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                               : L"管理操作由云端验证权限。修改本人资料：说明框输入“姓名|学号或邮箱”。");
-//【讲解 L357】结束当前代码块。
 }
-//【讲解 L358】函数 selected_row：从列表当前选择取回模型记录；任务启动前需要复制记录以避免刷新后悬空。
+
+/* ===================== 模块 7：后台任务 worker =====================
+ * 功能：在后台线程里真正执行联网操作，完成后把结果寄回界面线程。
+ * 场景：登录、注册、预约、签到签退、报故障、管理操作、问助手、检查新版本，全都在这里联网。
+ * 为什么要后台线程：联网可能要好几秒，如果放在界面线程里做，这期间窗口无法响应，会显示"未响应"。
+ * 规则：这里只读写参数 j 指向的 Job，不碰任何全局变量和控件。
+ */
+// 取用户在列表里选中的那条记录（"我的"页如果选的是使用记录表，就从那张表取）。
+// 返回的是模型内部指针，交给后台线程前必须深拷贝
 static cJSON *selected_row(void) {
-    //【讲解 L359】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
     int i = ListView_GetNextItem(page==1&&selectedTable?usageList:list, -1, LVNI_SELECTED);
-    //【讲解 L360】结束当前函数并返回 i >= 0 && i < listedCount ? listed[i] : NULL；具体成功或失败含义见函数说明。
     return i >= 0 && i < listedCount ? listed[i] : NULL;
-//【讲解 L361】结束当前代码块。
 }
-//【讲解 L362】函数 parameter：给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
+// 往请求参数里加一个字符串字段；字段名必须和云端函数的参数名一致
 static void parameter(cJSON *p, const char *key, const char *s) { cJSON_AddStringToObject(p, key, s); }
-//【讲解 L363】函数 worker：后台线程执行登录、预约、签到、管理 RPC 或助手请求，整理结果并安排界面线程接收；不直接绘制界面。
+// 后台线程入口。CreateThread 要求函数形如 DWORD WINAPI f(void *)，所以参数是 void *，进来后转回 Job *
 static DWORD WINAPI worker(void *arg) {
-    //【讲解 L364】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     Job *j = arg;
-    //【讲解 L365】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
     cJSON *p = NULL, *r = NULL;
-    //【讲解 L366】声明或更新 committed（已成功提交的小时数）；按本行表达式保存对应状态。
+    // committed：多小时预约中已经成功提交了几个小时
     int success = 0, committed = 0;
-    //【讲解 L367】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 【任务：检查新版本】从官网下载 native-desktop.json 比较版本号。它不需要登录、也不刷新数据，最后直接跳到结尾
     if (j->kind == JOB_UPDATE) {
-        //【讲解 L368】声明或更新 status（状态码或业务状态）；按本行表达式保存对应状态。
         int status = 0;
-        //【讲解 L369】调用 lab_win_http，Windows 传输回调。
+        // 这里直接调用 Windows 联网函数（不经过业务层），因为官网不是云端数据库，不需要令牌
         char *raw = lab_win_http(NULL, LAB_SITE_HOST, "GET", LAB_SITE_BASE "native-desktop.json", "", "", "",
-                                 //【讲解 L370】声明或更新 error（错误文本）、status（状态码或业务状态）；按本行表达式保存对应状态。
                                  &status, j->client.error, sizeof(j->client.error));
-        //【讲解 L371】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (raw) {
-            //【讲解 L372】解析 JSON 文本。
             r = cJSON_Parse(raw);
-            //【讲解 L373】释放堆内存。
             free(raw);
-        //【讲解 L374】结束当前代码块。
         }
-        //【讲解 L375】检查本行条件，满足后执行紧随其后的语句或代码块；调用 lab_semver_newer，只比较三段纯数字版本号；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
+        // 下载成功、解析成功、且线上版本更新时，才准备提示文字
         if (status == 200 && r && lab_semver_newer(lab_str(r, "version"), LAB_NATIVE_VERSION)) {
-            //【讲解 L376】按容量格式化 UTF-8 文本。
             snprintf(j->message, sizeof(j->message), "发现原生桌面新版本 %s。是否打开官网下载页？",
-                     //【讲解 L377】调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                      lab_str(r, "version"));
-            //【讲解 L378】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             j->ok = 1;
-        //【讲解 L379】结束当前代码块。
         }
-        //【讲解 L380】释放 JSON 对象及其子节点。
         cJSON_Delete(r);
-        //【讲解 L381】转到 post 统一处理，避免遗漏资源清理。
+        // goto post：跳过下面的业务和数据刷新，直接去结尾寄回结果
         goto post;
-    //【讲解 L382】结束当前代码块。
     }
-    //【讲解 L383】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 【任务：登录 / 注册 / 刷新】刷新本身什么都不用做，成功后统一走下面的"重新加载数据"
     if (j->kind == JOB_LOGIN)
-        //【讲解 L384】调用 lab_login，支持邮箱或学号登录。
         success = lab_login(&j->client, j->identity, j->password);
-    //【讲解 L385】上一条件不成立时检查下一条件。
     else if (j->kind == JOB_REGISTER)
-        //【讲解 L386】调用 lab_register，组织学生或带邀请码的注册参数，调用云端注册流程。
         success = lab_register(&j->client, j->name, j->identity, j->password, j->invite);
-    //【讲解 L387】上一条件不成立时检查下一条件。
     else if (j->kind == JOB_REFRESH)
-        //【讲解 L388】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         success = 1;
-    //【讲解 L389】上一条件不成立时检查下一条件。
+    // 【任务：预约】把 Job 里的 9 个编号转成 lab_reserve_range 需要的指针数组，然后按小时逐个提交
     else if (j->kind == JOB_BOOK) {
-        //【讲解 L390】声明或更新 keys（每小时幂等键）；按本行表达式保存对应状态。
         const char *keys[9];
-        //【讲解 L391】按本行初值、条件和步长循环。
         for (int i = 0; i < 9; i++)
-            //【讲解 L392】声明或更新 keys（每小时幂等键）；按本行表达式保存对应状态。
             keys[i] = j->keys[i];
-        //【讲解 L393】调用 lab_reserve_range，按小时提交多个设备，每小时使用一个幂等键。
         success = lab_reserve_range(&j->client, j->date, j->start, j->end, j->devices, (size_t)j->count, keys,
-                                    //【讲解 L394】声明或更新 committed（已成功提交的小时数）；按本行表达式保存对应状态。
                                     &committed);
-        //【讲解 L395】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 中途失败时告诉用户前面已经约上了几个小时（逐小时提交不是一个整体事务）
         if (!success)
-            //【讲解 L396】按容量格式化 UTF-8 文本。
             snprintf(j->message, sizeof(j->message),
-                     //【讲解 L397】声明或更新 committed（已成功提交的小时数）；按本行表达式保存对应状态。
                      "已确认成功 %d 个小时；本次未能完成全部提交，请刷新核实剩余小时。%s", committed,
-                     //【讲解 L398】声明或更新 error（错误文本）；按本行表达式保存对应状态。
                      j->client.error);
-    //【讲解 L399】上一条件不成立时检查下一条件。
+    // 【任务：签到/签退】当前时间在这里现取，因为用户点"确认"到真正发请求之间可能过了一会儿
     } else if (j->kind == JOB_ATTEND)
-        //【讲解 L400】调用 lab_attend，校验预约归属及动作，再调用 v2_check_in 或 v2_check_out；调用 now_ms，取得当前 Unix 毫秒。
         success = lab_attend(&j->client, j->row, j->action, now_ms());
-    //【讲解 L401】上一条件不成立时检查下一条件。
+    // 【任务：智能助手】把请求发给云端 AI 函数；回复留在 Job 里，由界面线程记进对话历史
     else if (j->kind == JOB_AGENT) {
-        //【讲解 L402】调用 lab_request，对外提供统一请求入口，开启一次令牌刷新重试。
         r = lab_request(&j->client,"POST","/functions/v1/deepseek-booking-agent",j->agentRequest);
-        //【讲解 L403】声明或更新 agentResult（助手响应对象）；按本行表达式保存对应状态。
         j->agentResult=r;
-        //【讲解 L404】比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
+        // 回复里 outcome 为 failed 才算失败
         success=r && strcmp(lab_str(r,"outcome"),"failed");
-        //【讲解 L405】检查本行条件，满足后执行紧随其后的语句或代码块；按精确字段名借用 JSON 子节点（字段 errors）。
+        // 有错误就显示第一条错误，否则显示 AI 的回复文字
         if(r){const cJSON *errors=cJSON_GetObjectItemCaseSensitive(r,"errors");
-            //【讲解 L406】按容量格式化 UTF-8 文本；读取数组元素数；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             snprintf(j->message,sizeof(j->message),"%s",cJSON_GetArraySize(errors)?lab_str(cJSON_GetArrayItem(errors,0),"message"):lab_str(r,"message"));}
 
-    //【讲解 L408】处理另一分支。
+    // 【其余任务：调用云端数据库函数】先按任务种类决定函数名 rpc 和参数 p，最后统一发送
     } else {
-        //【讲解 L409】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
         const char *rpc = NULL;
-        //【讲解 L410】创建 JSON 对象。
         p = cJSON_CreateObject();
-        //【讲解 L411】根据消息或任务类型选择处理分支。
         switch (j->kind) {
-        //【讲解 L412】处理 JOB_CANCEL 对应的事件或任务。
+        // 取消预约：参数是预约 id
         case JOB_CANCEL:
-            //【讲解 L413】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "v2_cancel_reservation";
-            //【讲解 L414】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             parameter(p, "p_reservation_id", lab_str(j->row, "id"));
-            //【讲解 L415】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L416】处理 JOB_REPORT 对应的事件或任务。
+        // 报告故障：用预约页选中的第一台设备 + 说明框文字
         case JOB_REPORT:
-            //【讲解 L417】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "report_device_fault";
-            //【讲解 L418】写入数值字段（字段 p_device_number）。
             cJSON_AddNumberToObject(p, "p_device_number", j->devices[0]);
-            //【讲解 L419】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "p_description", j->note);
-            //【讲解 L420】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L421】处理 JOB_REPAIR 对应的事件或任务。
+        // 完成维修：故障 id + 维修说明
         case JOB_REPAIR:
-            //【讲解 L422】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "v2_complete_fault_repair";
-            //【讲解 L423】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             parameter(p, "p_issue_id", lab_str(j->row, "id"));
-            //【讲解 L424】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "p_note", j->note);
-            //【讲解 L425】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L426】处理 JOB_ARCHIVE 对应的事件或任务。
+        // 归档已修复的故障
         case JOB_ARCHIVE:
-            //【讲解 L427】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "archive_resolved_issue";
-            //【讲解 L428】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             parameter(p, "p_issue_id", lab_str(j->row, "id"));
-            //【讲解 L429】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L430】处理 JOB_DEACTIVATE 对应的事件或任务。
+        // 停用学生账号
         case JOB_DEACTIVATE:
-            //【讲解 L431】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "deactivate_student";
-            //【讲解 L432】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             parameter(p, "target_user", lab_str(j->row, "id"));
-            //【讲解 L433】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L434】处理 JOB_INVITE 对应的事件或任务。
+        // 生成管理员邀请码：参数是有效天数
         case JOB_INVITE:
-            //【讲解 L435】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "create_admin_invite_for_days";
-            //【讲解 L436】写入数值字段（字段 p_valid_days）。
             cJSON_AddNumberToObject(p, "p_valid_days", j->inviteDays);
-            //【讲解 L437】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L438】处理 JOB_METRICS 对应的事件或任务。
+        // 统计报表：不走通用 rpc，下面单独调用 lab_usage_metrics
         case JOB_METRICS:
-            //【讲解 L439】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = NULL;
-            //【讲解 L440】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "p_start_date", j->date);
-            //【讲解 L441】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "p_end_date", j->date);
-            //【讲解 L442】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L443】处理 JOB_PROFILE 对应的事件或任务。
+        // 修改本人资料：说明框格式是 "姓名|学号"，在 | 处切成两段
         case JOB_PROFILE: {
-            //【讲解 L444】查找指定分隔字符。
             char *sep = strchr(j->note, '|');
-            //【讲解 L445】检查本行条件，满足后执行紧随其后的语句或代码块。
             if (!sep) {
-                //【讲解 L446】按容量格式化 UTF-8 文本。
                 snprintf(j->client.error, sizeof(j->client.error), "请在说明框输入：姓名|学号或邮箱");
-                //【讲解 L447】结束当前最近的循环或 switch 分支。
                 break;
-            //【讲解 L448】结束当前代码块。
             }
+            // 把 | 改成字符串结束符 0：note 只剩姓名，sep 指向后半段学号。*sep++ = 0 是先写 0、再让指针后移一位
             *sep++ = 0;
-            //【讲解 L450】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "update_profile_identity";
-            //【讲解 L451】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "target_user", j->client.session.uid);
-            //【讲解 L452】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "next_display_name", j->note);
-            //【讲解 L453】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "next_login_id", sep);
-            //【讲解 L454】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L455】结束当前代码块。
         }
-        //【讲解 L456】处理 JOB_SUGGEST 对应的事件或任务。
+        // 智能推荐：给定日期、偏好的小时、需要几台设备，最多返回 3 个方案
         case JOB_SUGGEST:
-            //【讲解 L457】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             rpc = "v2_schedule_candidates";
-            //【讲解 L458】调用 parameter，给 RPC 参数对象添加字符串字段，字段名要与云端函数参数一致。
             parameter(p, "p_date", j->date);
-            //【讲解 L459】写入数值字段（字段 p_preferred_hour）。
             cJSON_AddNumberToObject(p, "p_preferred_hour", j->start);
-            //【讲解 L460】写入数值字段（字段 p_required_device_count）。
             cJSON_AddNumberToObject(p, "p_required_device_count", j->count ? j->count : 1);
-            //【讲解 L461】把节点所有权交给对象；创建 JSON 数组（字段 p_preferred_devices）。
             cJSON_AddItemToObject(p, "p_preferred_devices", cJSON_CreateArray());
-            //【讲解 L462】写入数值字段（字段 p_limit）。
             cJSON_AddNumberToObject(p, "p_limit", 3);
-            //【讲解 L463】结束当前最近的循环或 switch 分支。
             break;
-        //【讲解 L464】结束当前代码块。
         }
-        //【讲解 L465】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 统一发送：统计报表走专用函数，其他有函数名的走 lab_rpc；发完就释放参数对象
         if (j->kind == JOB_METRICS)
-            //【讲解 L466】调用 lab_usage_metrics，调用 v3_admin_usage_metrics，device=0 表示全部设备。
             r = lab_usage_metrics(&j->client,j->date,j->endDate,j->metricDevice);
-        //【讲解 L467】上一条件不成立时检查下一条件。
         else if (rpc)
-            //【讲解 L468】调用 lab_rpc，检查 RPC 名称只包含允许的字符，再构造 /rest/v1/rpc/ 路径并发送 POST。
             r = lab_rpc(&j->client, rpc, p);
-        //【讲解 L469】释放 JSON 对象及其子节点。
         cJSON_Delete(p);
-        //【讲解 L470】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+        // 云端返回了数据就算成功
         success = r != NULL;
-        //【讲解 L471】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 邀请码：从返回结果里取出邀请码和过期时间，拼成提示
         if (success && j->kind == JOB_INVITE) {
-            //【讲解 L472】按下标借用数组元素。
             const cJSON *v = cJSON_IsArray(r) ? cJSON_GetArrayItem(r, 0) : r;
-            //【讲解 L473】按容量格式化 UTF-8 文本。
             snprintf(j->message, sizeof(j->message),
-                     //【讲解 L474】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                      "管理员邀请码：%s\n有效期至：%s\n请妥善保管，仅分享给授权管理员。",
-                     //【讲解 L475】调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                      lab_str(v, "invite_code"), lab_str(v, "expires_at"));
-        //【讲解 L476】结束当前代码块。
         }
-        //【讲解 L477】检查本行条件，满足后执行紧随其后的语句或代码块；调用 lab_metrics_report，将云端统计结果转换为总览、逐设备和逐时段报表。
+        // 统计报表：把结果排版成文字，界面线程用报表窗口显示
         if(success && j->kind==JOB_METRICS)lab_metrics_report(r,j->message,sizeof(j->message));
-        //【讲解 L478】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 智能推荐：把每个方案拼成"日期 时间，设备：03 05"一行。每次 snprintf 后检查剩余空间，写满就停，不会越界
         if (success && j->kind == JOB_SUGGEST) {
-            //【讲解 L479】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
             const cJSON *v;
-            //【讲解 L480】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
             size_t used = 0;
-            //【讲解 L481】按容量格式化 UTF-8 文本。
             snprintf(j->message, sizeof(j->message), "可预约方案（请选择设备后确认预约）：\n");
-            //【讲解 L482】计算字符串字节长度。
             used = strlen(j->message);
-            //【讲解 L483】遍历 JSON 数组。
             cJSON_ArrayForEach(v, r) {
-                //【讲解 L484】按容量格式化 UTF-8 文本。
                 int n = snprintf(j->message + used, sizeof(j->message) - used, "%s %02d:00，设备：",
-                                 //【讲解 L485】调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
                                  lab_str(v, "reservation_date"), lab_int(v, "start_hour"));
-                //【讲解 L486】检查本行条件，满足后执行紧随其后的语句或代码块。
                 if (n < 0 || (size_t)n >= sizeof(j->message) - used)
-                    //【讲解 L487】结束当前最近的循环或 switch 分支。
                     break;
-                //【讲解 L488】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                 used += (size_t)n;
-                //【讲解 L489】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
                 const cJSON *device;
-                //【讲解 L490】遍历 JSON 数组；按精确字段名借用 JSON 子节点（字段 device_numbers）。
                 cJSON_ArrayForEach(device, cJSON_GetObjectItemCaseSensitive(v, "device_numbers")) {
-                    //【讲解 L491】按容量格式化 UTF-8 文本。
                     n = snprintf(j->message + used, sizeof(j->message) - used, "%02d ", device->valueint);
-                    //【讲解 L492】检查本行条件，满足后执行紧随其后的语句或代码块。
                     if (n < 0 || (size_t)n >= sizeof(j->message) - used)
-                        //【讲解 L493】结束当前最近的循环或 switch 分支。
                         break;
-                    //【讲解 L494】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                     used += (size_t)n;
-                //【讲解 L495】结束当前代码块。
                 }
-                //【讲解 L496】检查本行条件，满足后执行紧随其后的语句或代码块。
                 if (used + 2 < sizeof(j->message)) {
-                    //【讲解 L497】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                     j->message[used++] = '\n';
-                    //【讲解 L498】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                     j->message[used] = 0;
-                //【讲解 L499】结束当前代码块。
                 }
-            //【讲解 L500】结束当前代码块。
             }
-            //【讲解 L501】检查本行条件，满足后执行紧随其后的语句或代码块；读取数组元素数。
             if (cJSON_GetArraySize(r) == 0)
-                //【讲解 L502】按容量格式化 UTF-8 文本。
                 snprintf(j->message, sizeof(j->message), "当前条件下没有可预约的方案。");
-        //【讲解 L503】结束当前代码块。
         }
-        //【讲解 L504】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 推荐结果要交给界面线程放进下拉框，所以把所有权转给 Job（r 置 NULL，下一行就不会删掉它）
         if(j->kind==JOB_SUGGEST && success){j->agentResult=r;r=NULL;}
-        //【讲解 L505】释放 JSON 对象及其子节点。
         cJSON_Delete(r);
-    //【讲解 L506】结束当前代码块。
     }
-    //【讲解 L507】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    // 【所有任务共同的收尾】记录成败；失败且没有专门提示时，用业务层写好的错误原因
     j->ok = success;
-    //【讲解 L508】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!success && !*j->message)
-        //【讲解 L509】按容量格式化 UTF-8 文本。
         snprintf(j->message, sizeof(j->message), "%s", j->client.error);
-    //【讲解 L510】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 只要还处于登录状态，就重新加载全部数据，让界面立刻看到操作结果
     if (*j->client.session.access) {
-        //【讲解 L511】调用 lab_load_model，先加载账号资料并确认 active，再加载设备、预约、故障及使用记录。
         j->loaded = lab_load_model(&j->client, &j->model);
-        //【讲解 L512】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 操作成功但刷新失败：明确告诉用户，避免误以为没约上而重复提交
         if (success && !j->loaded) {
-            //【讲解 L513】按容量格式化 UTF-8 文本。
             snprintf(j->message, sizeof(j->message), "操作已完成，但刷新失败：%s。请刷新核实后再操作。",
-                     //【讲解 L514】声明或更新 error（错误文本）；按本行表达式保存对应状态。
                      j->client.error);
-        //【讲解 L515】结束当前代码块。
         }
-    //【讲解 L516】结束当前代码块。
     }
-//【讲解 L517】整理后台任务结束状态，将结果交给界面线程。
+// post：所有分支最终都到这里
 post:
-    //【讲解 L518】清除敏感临时数据。
+    // 密码用完立刻擦除。SecureZeroMemory 保证这次清零不会被编译器当成"写了没人读"而优化掉
     SecureZeroMemory(j->password, sizeof(j->password));
-    //【讲解 L519】检查本行条件，满足后执行紧随其后的语句或代码块；把后台结果投递给主窗口。
+    // 把 Job 寄回主窗口。PostMessageW 只把消息放进主窗口的队列就返回，由界面线程稍后处理，这是跨线程交还数据的安全方式。
+    // 投递失败（例如窗口已关闭）就在这里自己释放 Job，避免内存泄漏
     if (!PostMessageW(j->target, RESULT_MESSAGE, 0, (LPARAM)j)) {
-        //【讲解 L520】调用 lab_model_free，释放模型持有的五组 JSON，然后清零结构体。
         lab_model_free(&j->model);
-        //【讲解 L521】调用 lab_session_clear，用 volatile 字节写入清空会话，降低清理被优化器省略的风险。
         lab_session_clear(&j->client.session);
-        //【讲解 L522】释放 JSON 对象及其子节点。
         cJSON_Delete(j->row);cJSON_Delete(j->agentRequest);cJSON_Delete(j->agentResult);
-        //【讲解 L523】释放堆内存。
         free(j);
-    //【讲解 L524】结束当前代码块。
     }
-    //【讲解 L525】结束当前函数并返回 0；具体成功或失败含义见函数说明。
     return 0;
-//【讲解 L526】结束当前代码块。
 }
-//【讲解 L527】函数 start_job：保存任务快照、设置忙状态并启动后台线程；创建失败时恢复界面并释放任务。
+
+/* ===================== 模块 8：启动后台任务 start_job =====================
+ * 功能：把 Job 交给新线程执行，并让界面进入"请稍候"状态。
+ */
 static void start_job(Job *j) {
-    //【讲解 L528】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     HANDLE thread;
-    //【讲解 L529】声明或更新 window（主窗口）；按本行表达式保存对应状态。
+    // 记下结果要寄回的窗口
     j->target = window;
-    //【讲解 L530】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    // 结构体整体复制：LabSession 里全是数组，这一句就把令牌等完整复制进 Job，后台线程用自己这份
     j->client = client;
-    //【讲解 L531】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 检查版本是悄悄进行的，不锁住界面；其他任务置 busy=1，按钮全部变灰
     if (j->kind == JOB_UPDATE)
-        //【讲解 L532】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         checkingUpdate = 1;
-    //【讲解 L533】处理另一分支。
     else
-        //【讲解 L534】声明或更新 busy（请求忙标记）；按本行表达式保存对应状态。
         busy = 1;
-    //【讲解 L535】调用 visibility，根据登录态、页面、角色及 busy 状态切换控件可见性和可操作性。
     visibility();
-    //【讲解 L536】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (j->kind != JOB_UPDATE)
-        //【讲解 L537】更新控件文字。
         SetWindowTextW(statusText, L"正在连接云端，请稍候…");
-    //【讲解 L538】创建后台工作线程。
+    // 创建线程运行 worker(j)。我们不需要等它结束，线程句柄立即关闭即可（线程本身照常运行）
     thread = CreateThread(NULL, 0, worker, j, 0, NULL);
-    //【讲解 L539】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (thread)
-        //【讲解 L540】释放线程句柄引用。
         CloseHandle(thread);
-    //【讲解 L541】处理另一分支。
+    // 创建线程失败：恢复界面状态，释放 Job 里的所有资源，再提示用户
     else {
-        //【讲解 L542】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (j->kind == JOB_UPDATE)
-            //【讲解 L543】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             checkingUpdate = 0;
-        //【讲解 L544】处理另一分支。
         else
-            //【讲解 L545】声明或更新 busy（请求忙标记）；按本行表达式保存对应状态。
             busy = 0;
-        //【讲解 L546】调用 visibility，根据登录态、页面、角色及 busy 状态切换控件可见性和可操作性。
         visibility();
-        //【讲解 L547】释放 JSON 对象及其子节点。
         cJSON_Delete(j->row);cJSON_Delete(j->agentRequest);cJSON_Delete(j->agentResult);
-        //【讲解 L548】调用 lab_session_clear，用 volatile 字节写入清空会话，降低清理被优化器省略的风险。
         lab_session_clear(&j->client.session);
-        //【讲解 L549】释放堆内存。
         free(j);
-        //【讲解 L550】调用 tell，显示平台消息提示。
         tell("无法创建请求线程，请重试。", MB_ICONERROR);
-    //【讲解 L551】结束当前代码块。
     }
-//【讲解 L552】结束当前代码块。
 }
-//【讲解 L553】函数 report_proc：Windows 报表窗口消息处理函数，创建只读文本控件并处理尺寸、关闭等消息。
+
+/* ===================== 模块 9：弹出窗口——报表、输入表单、导出 CSV =====================
+ * 功能：管理员点"统计报表"后显示一个可滚动的文字窗口；点"生成邀请码""统计报表""修改本人资料"时
+ *       先弹出一个小表单让用户填写；点"导出"时弹出"另存为"对话框，把记录写成 CSV。
+ * 写法：Win32 没有现成的输入框函数，这里自己注册窗口类，并在函数里跑一个小消息循环，
+ *       直到用户关掉窗口才返回，效果相当于一个模态对话框。
+ */
 static LRESULT CALLBACK report_proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){
- //【讲解 L554】检查本行条件，满足后执行紧随其后的语句或代码块；调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free；释放堆内存；同步读写控件状态。
- if(msg==WM_CREATE){wchar_t *text=wide((const char*)((CREATESTRUCTW*)lp)->lpCreateParams);HWND edit=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",text,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,12,12,760,520,h,(HMENU)210,NULL,NULL);free(text);SendMessageW(edit,WM_SETFONT,(WPARAM)font,TRUE);return 0;}
- //【讲解 L555】检查本行条件，满足后执行紧随其后的语句或代码块；调整控件位置和尺寸。
- if(msg==WM_SIZE){MoveWindow(GetDlgItem(h,210),12,12,LOWORD(lp)-24,HIWORD(lp)-24,TRUE);return 0;}
- //【讲解 L556】检查本行条件，满足后执行紧随其后的语句或代码块；交给 Windows 默认消息处理。
- if(msg==WM_CLOSE){DestroyWindow(h);return 0;}return DefWindowProcW(h,msg,wp,lp);
-//【讲解 L557】结束当前代码块。
+ // 报表窗口的消息处理：创建时放一个只读多行文本框，改变大小时让文本框铺满，关闭时销毁
+ if(msg==WM_CREATE){
+     wchar_t *text=wide((const char*)((CREATESTRUCTW*)lp)->lpCreateParams); // 报表文字是创建窗口时最后一个参数传进来的
+     HWND edit=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",text,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,12,12,760,520,h,(HMENU)210,NULL,NULL);
+     free(text);
+     SendMessageW(edit,WM_SETFONT,(WPARAM)font,TRUE);
+     return 0;}
+ if(msg==WM_SIZE){MoveWindow(GetDlgItem(h,210),12,12,LOWORD(lp)-24,HIWORD(lp)-24,TRUE);return 0;} // 窗口缩放时，文本框四周留 12 像素边距
+ if(msg==WM_CLOSE){DestroyWindow(h);return 0;}return DefWindowProcW(h,msg,wp,lp); // 其他消息交给系统默认处理
 }
-//【讲解 L558】函数 native_report：显示可滚动的原生文字报表窗口；目前不是网页版图表的完整视觉复刻。
+// 显示一个可滚动的文字报表窗口，用户关闭后才返回
 static void native_report(const char *title,const char *text){
- //【讲解 L559】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
+ // 步骤 1：注册报表窗口类（指定消息处理函数 report_proc）
  WNDCLASSW cls={0};cls.lpfnWndProc=report_proc;cls.hInstance=GetModuleHandleW(NULL);cls.lpszClassName=L"LabNativeReport";cls.hCursor=LoadCursorW(NULL,IDC_ARROW);cls.hbrBackground=(HBRUSH)(COLOR_WINDOW+1);RegisterClassW(&cls);wchar_t *caption=wide(title);
- //【讲解 L560】释放堆内存。
+ // 步骤 2：创建窗口，把报表文字通过最后一个参数传给 WM_CREATE
  HWND dialog=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,caption,WS_OVERLAPPEDWINDOW,100,100,840,640,window,NULL,cls.hInstance,(void*)text);free(caption);if(!dialog)return;
- //【讲解 L561】设置控件能否操作；设置窗口或控件显示状态；等待下一个窗口消息。
- int previousBusy=busy;busy=1;EnableWindow(window,FALSE);ShowWindow(dialog,SW_SHOW);MSG message;while(IsWindow(dialog)&&GetMessageW(&message,NULL,0,0)>0){if(!IsDialogMessageW(dialog,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}EnableWindow(window,TRUE);SetActiveWindow(window);busy=previousBusy;
-//【讲解 L562】结束当前代码块。
+ // 步骤 3：禁用主窗口，跑一个小消息循环直到报表窗口关闭；然后恢复主窗口和 busy 原值
+ int previousBusy=busy;busy=1;EnableWindow(window,FALSE);ShowWindow(dialog,SW_SHOW);
+ MSG message;while(IsWindow(dialog)&&GetMessageW(&message,NULL,0,0)>0){if(!IsDialogMessageW(dialog,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
+ EnableWindow(window,TRUE);SetActiveWindow(window);busy=previousBusy;
 }
-//【讲解 L563】声明共享的数据类型；字段的容量、所有权和用途见本结构体内各行。
+// 表单状态：每个字段的标题、值（每个最多 256 字节）、字段数、用户是否点了确定、输入框句柄（最多 3 个）
 typedef struct {const char **labels;char (*values)[256];int count,accepted;HWND fields[3];} NativeForm;
-//【讲解 L564】函数 form_proc：Windows 表单窗口消息处理：创建输入框，响应确定、取消并收集输入。
 static LRESULT CALLBACK form_proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){
- //【讲解 L565】读取窗口状态或附加指针。
- NativeForm *f=(NativeForm*)GetWindowLongPtrW(h,GWLP_USERDATA);
- //【讲解 L566】检查本行条件，满足后执行紧随其后的语句或代码块；写入窗口状态或附加指针。
- if(msg==WM_CREATE){f=(NativeForm*)((CREATESTRUCTW*)lp)->lpCreateParams;SetWindowLongPtrW(h,GWLP_USERDATA,(LONG_PTR)f);
- //【讲解 L567】按本行初值、条件和步长循环；调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free；同步读写控件状态；释放堆内存。
- for(int i=0;i<f->count;i++){wchar_t *caption=wide(f->labels[i]),*value=wide(f->values[i]);HWND label=CreateWindowW(L"STATIC",caption,WS_CHILD|WS_VISIBLE,20,16+i*76,450,24,h,NULL,NULL,NULL);f->fields[i]=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",value,WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,20,42+i*76,450,30,h,(HMENU)(INT_PTR)(200+i),NULL,NULL);SendMessageW(label,WM_SETFONT,(WPARAM)font,TRUE);SendMessageW(f->fields[i],WM_SETFONT,(WPARAM)font,TRUE);SendMessageW(f->fields[i],EM_SETLIMITTEXT,255,0);free(caption);free(value);}
- //【讲解 L568】同步读写控件状态。
- HWND ok=CreateWindowW(L"BUTTON",L"确定",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON,260,24+f->count*76,100,34,h,(HMENU)IDOK,NULL,NULL);HWND cancel=CreateWindowW(L"BUTTON",L"取消",WS_CHILD|WS_VISIBLE|WS_TABSTOP,370,24+f->count*76,100,34,h,(HMENU)IDCANCEL,NULL,NULL);SendMessageW(ok,WM_SETFONT,(WPARAM)font,TRUE);SendMessageW(cancel,WM_SETFONT,(WPARAM)font,TRUE);return 0;}
- //【讲解 L569】检查本行条件，满足后执行紧随其后的语句或代码块；调用 get_utf8，读取 Windows 控件宽字符文本，转换为业务层 UTF-8，写入有限容量缓冲区。
+ NativeForm *f=(NativeForm*)GetWindowLongPtrW(h,GWLP_USERDATA); // 取出挂在窗口上的表单状态
+ if(msg==WM_CREATE){
+     // 创建时：把 native_form 传来的表单状态指针挂到窗口上，之后每条消息都能取回
+     f=(NativeForm*)((CREATESTRUCTW*)lp)->lpCreateParams;SetWindowLongPtrW(h,GWLP_USERDATA,(LONG_PTR)f);
+     // 每个字段一行：上面是标题，下面是输入框（填好默认值）
+     for(int i=0;i<f->count;i++){wchar_t *caption=wide(f->labels[i]),*value=wide(f->values[i]);
+         HWND label=CreateWindowW(L"STATIC",caption,WS_CHILD|WS_VISIBLE,20,16+i*76,450,24,h,NULL,NULL,NULL);
+         f->fields[i]=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",value,WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,20,42+i*76,450,30,h,(HMENU)(INT_PTR)(200+i),NULL,NULL);
+         SendMessageW(label,WM_SETFONT,(WPARAM)font,TRUE);SendMessageW(f->fields[i],WM_SETFONT,(WPARAM)font,TRUE);
+         SendMessageW(f->fields[i],EM_SETLIMITTEXT,255,0); // 最多 255 个字符
+         free(caption);free(value);}
+     // 底部"确定""取消"两个按钮
+     HWND ok=CreateWindowW(L"BUTTON",L"确定",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON,260,24+f->count*76,100,34,h,(HMENU)IDOK,NULL,NULL);HWND cancel=CreateWindowW(L"BUTTON",L"取消",WS_CHILD|WS_VISIBLE|WS_TABSTOP,370,24+f->count*76,100,34,h,(HMENU)IDCANCEL,NULL,NULL);SendMessageW(ok,WM_SETFONT,(WPARAM)font,TRUE);SendMessageW(cancel,WM_SETFONT,(WPARAM)font,TRUE);return 0;}
+ // 点确定：把每个输入框的内容读回 values 并标记 accepted；确定或取消都关闭窗口
  if(msg==WM_COMMAND&&(LOWORD(wp)==IDOK||LOWORD(wp)==IDCANCEL)){if(LOWORD(wp)==IDOK){for(int i=0;i<f->count;i++)get_utf8(f->fields[i],f->values[i],256);f->accepted=1;}DestroyWindow(h);return 0;}
- //【讲解 L570】检查本行条件，满足后执行紧随其后的语句或代码块；交给 Windows 默认消息处理。
  if(msg==WM_CLOSE){DestroyWindow(h);return 0;}return DefWindowProcW(h,msg,wp,lp);
-//【讲解 L571】结束当前代码块。
 }
-//【讲解 L572】函数 native_form：显示少量字段的原生输入表单，接受时写回 values；调用者继续做业务参数校验。
+// 显示一个小表单并等待用户填写：点确定返回 1 并把内容写回 values，点取消返回 0。
+// 流程和 native_report 一样：注册窗口类 → 创建窗口 → 禁用主窗口跑小消息循环 → 恢复
 static int native_form(const char *title,const char *labels[],char values[][256],int count){
- //【讲解 L573】执行 GetModuleHandleW、LoadCursorW、RegisterClassW，参数沿用本行给出的对象、标志和容量。
  WNDCLASSW cls={0};cls.lpfnWndProc=form_proc;cls.hInstance=GetModuleHandleW(NULL);cls.lpszClassName=L"LabNativeForm";cls.hCursor=LoadCursorW(NULL,IDC_ARROW);cls.hbrBackground=(HBRUSH)(COLOR_WINDOW+1);RegisterClassW(&cls);
- //【讲解 L574】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
+ // 表单状态放在本函数的栈上，把指针交给窗口；窗口关闭前本函数不会返回，所以这个指针一直有效
  NativeForm f={labels,values,count,0,{0}};wchar_t *caption=wide(title);RECT r;GetWindowRect(window,&r);
- //【讲解 L575】释放堆内存。
  HWND dialog=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,caption,WS_CAPTION|WS_SYSMENU,r.left+150,r.top+100,510,115+count*76,window,NULL,cls.hInstance,&f);free(caption);if(!dialog)return 0;
- //【讲解 L576】设置控件能否操作；设置窗口或控件显示状态。
+ // 光标默认放在第一个输入框
  int previousBusy=busy;busy=1;EnableWindow(window,FALSE);ShowWindow(dialog,SW_SHOW);SetFocus(f.fields[0]);MSG message;
- //【讲解 L577】条件成立时继续循环；等待下一个窗口消息；转换键盘消息；派发消息给窗口过程。
  while(IsWindow(dialog)&&GetMessageW(&message,NULL,0,0)>0){if(!IsDialogMessageW(dialog,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
- //【讲解 L578】设置控件能否操作。
  EnableWindow(window,TRUE);SetActiveWindow(window);busy=previousBusy;return f.accepted;
-//【讲解 L579】结束当前代码块。
 }
-//【讲解 L580】函数 export_records：弹出原生保存对话框，再调用共享 CSV 输出函数，报告文件写入结果。
+// 导出 CSV：弹出"另存为"对话框（默认文件名 reservations.csv 或 issues.csv），写入当前已加载的全部记录
 static void export_records(int issues){
- //【讲解 L581】声明或更新 issues（故障列表）、window（主窗口）；按本行表达式保存对应状态。
- wchar_t path[MAX_PATH];wcscpy(path,issues?L"issues.csv":L"reservations.csv");OPENFILENAMEW save={0};save.lStructSize=sizeof(save);save.hwndOwner=window;save.lpstrFile=path;save.nMaxFile=MAX_PATH;save.lpstrFilter=L"CSV 文件\0*.csv\0\0";save.lpstrDefExt=L"csv";save.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
- //【讲解 L582】检查本行条件，满足后执行紧随其后的语句或代码块；调用 lab_export_csv，以 UTF-8 BOM 输出当前已加载模型中的全部预约或故障；关闭文件；调用 tell，显示平台消息提示。
+ wchar_t path[MAX_PATH];wcscpy(path,issues?L"issues.csv":L"reservations.csv"); // 默认文件名
+ // 配置另存为对话框：只显示 CSV 文件、自动补 .csv 后缀、覆盖已有文件前先确认
+ OPENFILENAMEW save={0};save.lStructSize=sizeof(save);save.hwndOwner=window;save.lpstrFile=path;save.nMaxFile=MAX_PATH;save.lpstrFilter=L"CSV 文件\0*.csv\0\0";save.lpstrDefExt=L"csv";save.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+ // 用户点了保存：以二进制方式打开并写入；写入失败或关闭失败（如磁盘已满）都算导出失败
  if(GetSaveFileNameW(&save)){FILE *out=_wfopen(path,L"wb");int ok=out&&lab_export_csv(&model,issues,out);if(out&&fclose(out)!=0)ok=0;tell(ok?"完整记录已导出。":"导出失败，请检查保存位置。",ok?MB_ICONINFORMATION:MB_ICONERROR);}
-//【讲解 L583】结束当前代码块。
 }
-//【讲解 L584】函数 command：把按钮编号映射成具体操作；先检查输入和选中记录，再创建 Job，交由 worker 异步执行。
+
+/* ===================== 模块 10：按钮分派 command =====================
+ * 功能：用户点了某个按钮后决定具体做什么：检查输入 → 必要时弹确认框 → 打包成 Job → 交给后台。
+ * 场景：参数 id 就是被点按钮的编号（模块 2 的 ID_xxx）。30 秒自动刷新也会调用 command(ID_REFRESH)。
+ * 写法：中途发现输入有问题就 goto abort，在函数末尾统一释放 Job；需要用户确认的 goto confirm。
+ *       C 没有异常和析构函数，跳到统一出口是避免漏释放内存的常见写法。
+ */
 static void command(int id) {
-    //【讲解 L585】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     Job *j;
-    //【讲解 L586】声明或更新 row（当前模型记录）；按本行表达式保存对应状态。
     cJSON *row;
-    //【讲解 L587】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
     char confirmation[512];
-    //【讲解 L588】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 有任务在执行或处于预览模式时，忽略所有点击
     if (busy || preview)
-        //【讲解 L589】结束当前函数并返回 ；具体成功或失败含义见函数说明。
         return;
-    //【讲解 L590】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 【退出账号】不需要联网：清空助手对话、推荐结果、令牌（安全擦除）和数据，回到登录页
     if (id == ID_LOGOUT) {
-        //【讲解 L591】调用 lab_agent_clear，释放助手历史及最近响应并清空状态；释放 JSON 对象及其子节点。
         lab_agent_clear(&agent);cJSON_Delete(scheduleCandidates);scheduleCandidates=NULL;
-        //【讲解 L592】调用 lab_session_clear，用 volatile 字节写入清空会话，降低清理被优化器省略的风险。
         lab_session_clear(&client.session);
-        //【讲解 L593】调用 lab_model_free，释放模型持有的五组 JSON，然后清零结构体。
         lab_model_free(&model);
-        //【讲解 L594】声明或更新 logged（登录标记）；按本行表达式保存对应状态。
         logged = 0;
-        //【讲解 L595】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         scrollY=0;selectedId[0]=0;
-        //【讲解 L596】声明或更新 listedCount（已显示记录数）；按本行表达式保存对应状态。
         listedCount = 0;
-        //【讲解 L597】执行 ListView_DeleteAllItems，参数沿用本行给出的对象、标志和容量。
         ListView_DeleteAllItems(list);
-        //【讲解 L598】更新控件文字。
         SetWindowTextW(password, L"");
-        //【讲解 L599】调用 layout，按窗口、页面和滚动状态排列控件。
         layout();
-        //【讲解 L600】结束当前函数并返回 ；具体成功或失败含义见函数说明。
         return;
-    //【讲解 L601】结束当前代码块。
     }
-    //【讲解 L602】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 【采用推荐方案】也不联网：把选中的推荐方案填回日期框、小时框和设备选择，用户再点"确认预约"
     if(id==ID_USE_CANDIDATE){
- //【讲解 L603】按下标借用数组元素；同步读写控件状态。
+ // 下拉框当前选的第几项，就取第几个候选方案
  const cJSON *candidate=cJSON_GetArrayItem(scheduleCandidates,(int)SendMessageW(scheduleOptions,CB_GETCURSEL,0,0));
- //【讲解 L604】按精确字段名借用 JSON 子节点；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针（字段 device_numbers）。
  const cJSON *numbers=cJSON_GetObjectItemCaseSensitive(candidate,"device_numbers");int hour=lab_int(candidate,"start_hour");const char *date=lab_str(candidate,"reservation_date");
- //【讲解 L605】检查本行条件，满足后执行紧随其后的语句或代码块；计算字符串字节长度；读取数组元素数。
+ // 数据不合法（日期长度不对、小时超出 8~16、没有设备）就什么都不做
  if(strlen(date)!=10||hour<8||hour>16||!cJSON_GetArraySize(numbers))return;
- //【讲解 L606】从文本解析字段；同步读写控件状态；初始化或清空指定内存。
- SYSTEMTIME time={0};int year,month,day;if(sscanf(date,"%d-%d-%d",&year,&month,&day)!=3)return;time.wYear=(WORD)year;time.wMonth=(WORD)month;time.wDay=(WORD)day;DateTime_SetSystemtime(dateEdit,GDT_VALID,&time);SendMessageW(startEdit,CB_SETCURSEL,hour-8,0);SendMessageW(endEdit,CB_SETCURSEL,hour-8,0);memset(selected,0,sizeof(selected));const cJSON *n;cJSON_ArrayForEach(n,numbers)if(n->valueint>=1&&n->valueint<=40)selected[n->valueint-1]=1;
- //【讲解 L607】调用 render，按页面、账号、日期和设备状态更新控件内容。
+ SYSTEMTIME time={0};int year,month,day;if(sscanf(date,"%d-%d-%d",&year,&month,&day)!=3)return; // 从 "2026-11-05" 拆出年月日
+ time.wYear=(WORD)year;time.wMonth=(WORD)month;time.wDay=(WORD)day;DateTime_SetSystemtime(dateEdit,GDT_VALID,&time); // 设置日期框
+ SendMessageW(startEdit,CB_SETCURSEL,hour-8,0);SendMessageW(endEdit,CB_SETCURSEL,hour-8,0); // 开始框第 0 项是 8 点、结束框第 0 项是 9 点，下标都取 hour-8 正好选中一小时
+ memset(selected,0,sizeof(selected));const cJSON *n;cJSON_ArrayForEach(n,numbers)if(n->valueint>=1&&n->valueint<=40)selected[n->valueint-1]=1; // 清掉原来的设备选择，换成方案里的设备
+ // 重画，让用户看到填好的结果
  render();return;
- //【讲解 L608】结束当前代码块。
  }
-    //【讲解 L609】检查本行条件，满足后执行紧随其后的语句或代码块；调用 admin，根据云端加载的 session.role 判断是否显示管理入口；调用 export_records，弹出原生保存对话框，再调用共享 CSV 输出函数，报告文件写入结果。
+    // 【导出】只有管理员能导出；读的是本地已有数据，不需要后台线程
     if(id==ID_EXPORT_BOOKINGS||id==ID_EXPORT_ISSUES){if(admin())export_records(id==ID_EXPORT_ISSUES);return;}
-    //【讲解 L610】申请并清零堆内存。
+    // —— 以下按钮都要联网，先创建 Job。calloc 会把所有字段清零，没填的字段就是 0 或空串 ——
     j = calloc(1, sizeof(*j));
-    //【讲解 L611】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!j)
-        //【讲解 L612】结束当前函数并返回 ；具体成功或失败含义见函数说明。
         return;
-    //【讲解 L613】调用 date_string，将日期控件的年月日格式化为 YYYY-MM-DD。
+    // 把当前界面上的输入统一抄进 Job：日期、开始/结束小时、说明框、选中的设备。后台线程只用这份副本
     date_string(j->date);
-    //【讲解 L614】同步读写控件状态。
+    // 开始框第 0 项是 8 点；结束框第 0 项是 9 点
     j->start = 8 + (int)SendMessageW(startEdit, CB_GETCURSEL, 0, 0);
-    //【讲解 L615】同步读写控件状态。
     j->end = 9 + (int)SendMessageW(endEdit, CB_GETCURSEL, 0, 0);
-    //【讲解 L616】调用 get_utf8，读取 Windows 控件宽字符文本，转换为业务层 UTF-8，写入有限容量缓冲区。
     get_utf8(noteEdit, j->note, sizeof(j->note));
-    //【讲解 L617】按本行初值、条件和步长循环。
+    // selected[i] 为 1 表示第 i+1 号设备被选中
     for (int i = 0; i < 40; i++)
-        //【讲解 L618】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (selected[i])
-            //【讲解 L619】声明或更新 devices（设备列表）；按本行表达式保存对应状态。
             j->devices[j->count++] = i + 1;
-    //【讲解 L620】检查本行条件，满足后执行紧随其后的语句或代码块；按容量格式化 UTF-8 文本。
+    // 【统计报表】先弹表单问起止日期和设备编号（默认今天、全部设备），检查格式后存进 Job
     if(id==ID_METRICS){const char *labels[]={"开始日期 YYYY-MM-DD","结束日期 YYYY-MM-DD","设备编号（0 为全部，1–40）"};char fields[3][256];snprintf(fields[0],256,"%s",j->date);snprintf(fields[1],256,"%s",j->date);snprintf(fields[2],256,"0");
-        //【讲解 L621】检查本行条件，满足后执行紧随其后的语句或代码块；调用 native_form，显示少量字段的原生输入表单，接受时写回 values。
         if(!native_form("实验室使用情况",labels,fields,3))goto abort;
-        //【讲解 L622】检查本行条件，满足后执行紧随其后的语句或代码块；计算字符串字节长度；调用 tell，显示平台消息提示。
+        // 日期必须是 10 个字符；设备编号必须全是数字、不能为空、不超过 40
         if(strlen(fields[0])!=10||strlen(fields[1])!=10||strspn(fields[2],"0123456789")!=strlen(fields[2])||!*fields[2]||atoi(fields[2])>40){tell("请填写有效日期和设备编号。",MB_ICONINFORMATION);goto abort;}
-        //【讲解 L623】按容量格式化 UTF-8 文本。
         snprintf(j->date,16,"%.10s",fields[0]);snprintf(j->endDate,16,"%.10s",fields[1]);j->metricDevice=atoi(fields[2]);
-    //【讲解 L624】结束当前代码块。
     }
-    //【讲解 L625】检查本行条件，满足后执行紧随其后的语句或代码块；调用 native_form，显示少量字段的原生输入表单，接受时写回 values。
+    // 【生成邀请码】弹表单问有效天数，只接受 1、7、30
     if(id==ID_INVITE){const char *labels[]={"有效天数：1、7 或 30"};char fields[1][256]={"7"};if(!native_form("生成管理员邀请码",labels,fields,1))goto abort;
-        //【讲解 L626】检查本行条件，满足后执行紧随其后的语句或代码块；比较字符串内容；调用 tell，显示平台消息提示。
         if(strcmp(fields[0],"1")&&strcmp(fields[0],"7")&&strcmp(fields[0],"30")){tell("请选择 1、7 或 30 天。",MB_ICONINFORMATION);goto abort;}j->inviteDays=atoi(fields[0]);
-    //【讲解 L627】结束当前代码块。
     }
-    //【讲解 L628】检查本行条件，满足后执行紧随其后的语句或代码块；按容量格式化 UTF-8 文本；调用 native_form，显示少量字段的原生输入表单，接受时写回 values。
+    // 【修改本人资料】弹表单，默认填当前姓名和学号；任一项为空或含 | 就放弃；拼成 "姓名|学号" 交给 worker 再拆开
     if(id==ID_PROFILE){const char *labels[]={"姓名","学号 / 管理员邮箱"};char fields[2][256];snprintf(fields[0],256,"%s",client.session.name);snprintf(fields[1],256,"%s",client.session.login);if(!native_form("修改个人资料",labels,fields,2))goto abort;
-        //【讲解 L629】检查本行条件，满足后执行紧随其后的语句或代码块；查找指定分隔字符；按容量格式化 UTF-8 文本。
         if(!*fields[0]||!*fields[1]||strchr(fields[0],'|')||strchr(fields[1],'|'))goto abort;snprintf(j->note,sizeof(j->note),"%s|%s",fields[0],fields[1]);
-    //【讲解 L630】结束当前代码块。
     }
-    //【讲解 L631】根据消息或任务类型选择处理分支。
+    // 按按钮种类设置任务种类，并做各自的输入检查
     switch (id) {
-    //【讲解 L632】处理 ID_LOGIN 对应的事件或任务。
+    // 登录和注册：读出登录页 4 个输入框；学号和密码不能为空
     case ID_LOGIN:
-    //【讲解 L633】处理 ID_REGISTER 对应的事件或任务。
     case ID_REGISTER:
-        //【讲解 L634】调用 get_utf8，读取 Windows 控件宽字符文本，转换为业务层 UTF-8，写入有限容量缓冲区。
         get_utf8(identity, j->identity, sizeof(j->identity));
-        //【讲解 L635】调用 get_utf8，读取 Windows 控件宽字符文本，转换为业务层 UTF-8，写入有限容量缓冲区。
         get_utf8(password, j->password, sizeof(j->password));
-        //【讲解 L636】调用 get_utf8，读取 Windows 控件宽字符文本，转换为业务层 UTF-8，写入有限容量缓冲区。
         get_utf8(nameEdit, j->name, sizeof(j->name));
-        //【讲解 L637】调用 get_utf8，读取 Windows 控件宽字符文本，转换为业务层 UTF-8，写入有限容量缓冲区。
         get_utf8(inviteEdit, j->invite, sizeof(j->invite));
-        //【讲解 L638】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = id == ID_LOGIN ? JOB_LOGIN : JOB_REGISTER;
-        //【讲解 L639】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (!*j->identity || !*j->password) {
-            //【讲解 L640】调用 tell，显示平台消息提示。
             tell("请填写学号 / 邮箱与密码。", MB_ICONINFORMATION);
-            //【讲解 L641】转到 abort 统一处理，避免遗漏资源清理。
             goto abort;
-        //【讲解 L642】结束当前代码块。
         }
-        //【讲解 L643】结束当前最近的循环或 switch 分支。
         break;
-    //【讲解 L644】处理 ID_REFRESH 对应的事件或任务。
+    // 刷新：不需要额外输入
     case ID_REFRESH:
-        //【讲解 L645】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_REFRESH;
-        //【讲解 L646】结束当前最近的循环或 switch 分支。
         break;
-    //【讲解 L647】处理 ID_BOOK 对应的事件或任务。
+    // 确认预约：至少选一台设备，结束时间必须晚于开始时间
     case ID_BOOK:
-        //【讲解 L648】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_BOOK;
-        //【讲解 L649】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (!j->count || j->start >= j->end) {
-            //【讲解 L650】调用 tell，显示平台消息提示。
             tell("请选择设备和有效时段。", MB_ICONINFORMATION);
-            //【讲解 L651】转到 abort 统一处理，避免遗漏资源清理。
             goto abort;
-        //【讲解 L652】结束当前代码块。
         }
-        //【讲解 L653】按本行初值、条件和步长循环。
+        // 为 8~16 点每小时生成一个 GUID 作为防重复编号。网络超时后用户再点一次，云端看到相同编号就不会重复预约
         for (int i = 0; i < 9; i++) {
-            //【讲解 L654】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
             GUID g;
-            //【讲解 L655】检查本行条件，满足后执行紧随其后的语句或代码块。
             if (FAILED(CoCreateGuid(&g))) {
-                //【讲解 L656】调用 tell，显示平台消息提示。
                 tell("生成请求编号失败。", MB_ICONERROR);
-                //【讲解 L657】转到 abort 统一处理，避免遗漏资源清理。
                 goto abort;
-            //【讲解 L658】结束当前代码块。
             }
-            //【讲解 L659】按容量格式化 UTF-8 文本。
+            // 把 GUID 格式化成标准的 xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx 文本
             snprintf(j->keys[i], 64, "%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                     //【讲解 L660】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                      (unsigned long)g.Data1, g.Data2, g.Data3, g.Data4[0], g.Data4[1], g.Data4[2], g.Data4[3],
-                     //【讲解 L661】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                      g.Data4[4], g.Data4[5], g.Data4[6], g.Data4[7]);
-        //【讲解 L662】结束当前代码块。
         }
-        //【讲解 L663】按容量格式化 UTF-8 文本。
+        // 准备确认框文字，然后跳到 confirm 弹框
         snprintf(
-            //【讲解 L664】执行 ，参数沿用本行给出的对象、标志和容量。
             confirmation, sizeof(confirmation),
-            //【讲解 L665】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
             "预约 %s %02d:00–%02d:00，共 %d 台设备？多小时会逐时提交；若后续冲突，会保留先前成功的小时。",
-            //【讲解 L666】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
             j->date, j->start, j->end, j->count);
-        //【讲解 L667】转到 confirm 统一处理，避免遗漏资源清理。
         goto confirm;
-    //【讲解 L668】处理 ID_ATTEND 对应的事件或任务。
+    // 签到、取消、完成维修、归档、停用：都要先在列表里选中一行
     case ID_ATTEND:
-    //【讲解 L669】处理 ID_CANCEL 对应的事件或任务。
     case ID_CANCEL:
-    //【讲解 L670】处理 ID_REPAIR 对应的事件或任务。
     case ID_REPAIR:
-    //【讲解 L671】处理 ID_ARCHIVE 对应的事件或任务。
     case ID_ARCHIVE:
-    //【讲解 L672】处理 ID_DEACTIVATE 对应的事件或任务。
     case ID_DEACTIVATE:
-        //【讲解 L673】调用 selected_row，从列表当前选择取回模型记录。
         row = selected_row();
-        //【讲解 L674】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (!row) {
-            //【讲解 L675】调用 tell，显示平台消息提示。
             tell("请先选择列表中的一行。", MB_ICONINFORMATION);
-            //【讲解 L676】转到 abort 统一处理，避免遗漏资源清理。
             goto abort;
-        //【讲解 L677】结束当前代码块。
         }
-        //【讲解 L678】深复制 JSON 节点，隔离所有权。
+        // 深拷贝选中的记录：30 秒自动刷新会释放旧数据，如果 Job 只存原指针，后台线程就会访问已释放的内存（悬空指针）
         j->row = cJSON_Duplicate(row, 1);
-        //【讲解 L679】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 签到/签退：先在本地判断现在能签到还是签退、是不是自己的预约，给出友好提示（最终由云端再校验）
         if (id == ID_ATTEND) {
-            //【讲解 L680】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             j->kind = JOB_ATTEND;
-            //【讲解 L681】调用 lab_attendance_action，根据状态和时间给出可执行动作：0 不可操作，1 签到，2 签退；调用 now_ms，取得当前 Unix 毫秒。
             j->action = lab_attendance_action(row, now_ms());
-            //【讲解 L682】检查本行条件，满足后执行紧随其后的语句或代码块；比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             if (strcmp(lab_str(row, "user_id"), client.session.uid) || !j->action) {
-                //【讲解 L683】调用 tell，显示平台消息提示。
                 tell("仅可操作自己的预约：在预约小时内签到，使用中可签退。请刷新核实当前状态。",
-                     //【讲解 L684】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                      MB_ICONINFORMATION);
-                //【讲解 L685】转到 abort 统一处理，避免遗漏资源清理。
                 goto abort;
-            //【讲解 L686】结束当前代码块。
             }
-            //【讲解 L687】按容量格式化 UTF-8 文本。
             snprintf(confirmation, sizeof(confirmation), "确认%s设备 %02d（%s %02d:00）的预约？",
-                     //【讲解 L688】调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
                      j->action == 1 ? "签到" : "签退", lab_int(row, "device_number"),
-                     //【讲解 L689】调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
                      lab_str(row, "reservation_date"), lab_int(row, "start_hour"));
-        //【讲解 L690】处理另一分支。
+        // 其他四种：根据按钮选任务种类和确认文字
         } else {
-            //【讲解 L691】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             j->kind = id == ID_CANCEL    ? JOB_CANCEL
-                      //【讲解 L692】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                       : id == ID_REPAIR  ? JOB_REPAIR
-                      //【讲解 L693】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                       : id == ID_ARCHIVE ? JOB_ARCHIVE
-                                         //【讲解 L694】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                                          : JOB_DEACTIVATE;
-            //【讲解 L695】按容量格式化 UTF-8 文本。
             snprintf(confirmation, sizeof(confirmation), "确认%s所选记录？",
-                     //【讲解 L696】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                      id == ID_CANCEL    ? "取消预约"
-                     //【讲解 L697】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                      : id == ID_REPAIR  ? "完成维修"
-                     //【讲解 L698】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
                      : id == ID_ARCHIVE ? "归档故障"
-                                        //【讲解 L699】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                                         : "停用学生账号");
-        //【讲解 L700】结束当前代码块。
         }
-        //【讲解 L701】转到 confirm 统一处理，避免遗漏资源清理。
         goto confirm;
-    //【讲解 L702】处理 ID_REPORT 对应的事件或任务。
+    // 报告故障：用预约页选中的第一台设备
     case ID_REPORT:
-        //【讲解 L703】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_REPORT;
-        //【讲解 L704】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (!j->count) {
-            //【讲解 L705】调用 tell，显示平台消息提示。
             tell("请先到设备预约页选中一台设备。", MB_ICONINFORMATION);
-            //【讲解 L706】转到 abort 统一处理，避免遗漏资源清理。
             goto abort;
-        //【讲解 L707】结束当前代码块。
         }
-        //【讲解 L708】按容量格式化 UTF-8 文本。
         snprintf(confirmation, sizeof(confirmation), "确认报告设备 %02d 故障？", j->devices[0]);
-        //【讲解 L709】转到 confirm 统一处理，避免遗漏资源清理。
         goto confirm;
-    //【讲解 L710】处理 ID_INVITE 对应的事件或任务。
+    // 邀请码、统计报表：前面已用表单收好参数，直接执行
     case ID_INVITE:
-        //【讲解 L711】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_INVITE;
-        //【讲解 L712】结束当前最近的循环或 switch 分支。
         break;
-    //【讲解 L713】处理 ID_METRICS 对应的事件或任务。
     case ID_METRICS:
-        //【讲解 L714】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_METRICS;
-        //【讲解 L715】结束当前最近的循环或 switch 分支。
         break;
-    //【讲解 L716】处理 ID_PROFILE 对应的事件或任务。
+    // 修改资料：需要确认
     case ID_PROFILE:
-        //【讲解 L717】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_PROFILE;
-        //【讲解 L718】按容量格式化 UTF-8 文本。
         snprintf(confirmation, sizeof(confirmation), "确认按说明框内容修改本人姓名和登录名？");
-        //【讲解 L719】转到 confirm 统一处理，避免遗漏资源清理。
         goto confirm;
-    //【讲解 L720】处理 ID_SUGGEST 对应的事件或任务。
+    // 智能推荐：直接执行
     case ID_SUGGEST:
-        //【讲解 L721】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_SUGGEST;
-        //【讲解 L722】结束当前最近的循环或 switch 分支。
         break;
-    //【讲解 L723】处理 ID_AGENT_CONFIRM 对应的事件或任务。
+    // 智能助手的"发送"和"选择此方案"：生成一个 GUID 作为本次请求编号；action 记录是否管理员（决定用哪种助手）
     case ID_AGENT_CONFIRM:
-    //【讲解 L724】处理 ID_AGENT 对应的事件或任务。
     case ID_AGENT:
-        //【讲解 L725】执行 FAILED、CoCreateGuid，参数沿用本行给出的对象、标志和容量。
         { GUID g; if(FAILED(CoCreateGuid(&g)))goto abort;
-          //【讲解 L726】按容量格式化 UTF-8 文本。
           snprintf(j->keys[0],64,"%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-            //【讲解 L727】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
             (unsigned long)g.Data1,g.Data2,g.Data3,g.Data4[0],g.Data4[1],g.Data4[2],g.Data4[3],g.Data4[4],g.Data4[5],g.Data4[6],g.Data4[7]); }
-        //【讲解 L728】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_AGENT;
-        //【讲解 L729】调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
         j->action = admin();
-        //【讲解 L730】结束当前最近的循环或 switch 分支。
         break;
-    //【讲解 L731】处理 ID_UPDATE 对应的事件或任务。
+    // 检查版本：已经在检查就不重复发起
     case ID_UPDATE:
-        //【讲解 L732】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (checkingUpdate)
-            //【讲解 L733】转到 abort 统一处理，避免遗漏资源清理。
             goto abort;
-        //【讲解 L734】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         j->kind = JOB_UPDATE;
-        //【讲解 L735】结束当前最近的循环或 switch 分支。
         break;
-    //【讲解 L736】处理未被前面分支覆盖的情况。
+    // 未知编号：直接放弃
     default:
-        //【讲解 L737】转到 abort 统一处理，避免遗漏资源清理。
         goto abort;
-    //【讲解 L738】结束当前代码块。
     }
-    //【讲解 L739】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 智能助手的额外准备：组装发给 AI 的请求
     if(j->kind==JOB_AGENT){
-        //【讲解 L740】调用 lab_agent_bind，把助手状态绑定到账号。
         lab_agent_bind(&agent,client.session.uid);
-        //【讲解 L741】检查本行条件，满足后执行紧随其后的语句或代码块；调用 tell，显示平台消息提示。
+        // "发送"时说明框不能为空
         if(id==ID_AGENT&&!*j->note){tell("请输入你的需求。",MB_ICONINFORMATION);goto abort;}
-        //【讲解 L742】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
         cJSON *confirmation=NULL;
-        //【讲解 L743】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // "选择此方案"：按下拉框选中的方案生成确认信息（同一方案重试复用原来的防重复编号）；确认时不再附带用户文字
         if(id==ID_AGENT_CONFIRM){
-            //【讲解 L744】调用 lab_agent_confirmation，根据所选方案构造确认体；同步读写控件状态。
             confirmation=lab_agent_confirmation(&agent,(int)SendMessageW(agentOptions,CB_GETCURSEL,0,0),j->keys[0]);
-            //【讲解 L745】检查本行条件，满足后执行紧随其后的语句或代码块。
             if(!confirmation)goto abort;
-            //【讲解 L746】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             j->note[0]=0;
-        //【讲解 L747】结束当前代码块。
         }
-        //【讲解 L748】调用 lab_agent_payload，构造与网页版一致的 V3 助手请求字段。
+        // 把用户输入、当前选择、对话历史打包成请求 JSON
         j->agentRequest=lab_agent_payload(&client.session,j->note,j->date,j->start,j->end,j->devices,(size_t)j->count,j->keys[0],agent.session,agent.history,confirmation);
-        //【讲解 L749】释放 JSON 对象及其子节点。
+        // 确认信息已被深拷贝进请求，这里释放原件
         cJSON_Delete(confirmation);if(!j->agentRequest)goto abort;
-    //【讲解 L750】结束当前代码块。
     }
-    //【讲解 L751】调用 start_job，保存任务快照、设置忙状态并启动后台线程。
+    // 不需要确认的任务：直接启动
     start_job(j);
-    //【讲解 L752】结束当前函数并返回 ；具体成功或失败含义见函数说明。
     return;
-//【讲解 L753】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
+// confirm：弹出"是/否"确认框（默认按钮是"否"，防止误按回车）；选"是"才启动任务，选"否"会顺着走到 abort
 confirm:
-    //【讲解 L754】开始当前作用域。
     {
-        //【讲解 L755】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
         wchar_t *w = wide(confirmation);
-        //【讲解 L756】声明或更新 window（主窗口）；按本行表达式保存对应状态。
         int answer = MessageBoxW(window, w, L"请确认", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
-        //【讲解 L757】释放堆内存。
         free(w);
-        //【讲解 L758】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (answer == IDYES) {
-            //【讲解 L759】调用 start_job，保存任务快照、设置忙状态并启动后台线程。
             start_job(j);
-            //【讲解 L760】结束当前函数并返回 ；具体成功或失败含义见函数说明。
             return;
-        //【讲解 L761】结束当前代码块。
         }
-    //【讲解 L762】结束当前代码块。
     }
-//【讲解 L763】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
+// abort：取消或检查失败都到这里：擦除密码、释放 Job 和其中的 JSON。cJSON_Delete(NULL) 什么都不做，所以不用逐个判断
 abort:
-    //【讲解 L764】清除敏感临时数据。
     SecureZeroMemory(j->password, sizeof(j->password));
-    //【讲解 L765】释放 JSON 对象及其子节点。
     cJSON_Delete(j->row);cJSON_Delete(j->agentRequest);cJSON_Delete(j->agentResult);
-    //【讲解 L766】释放堆内存。
     free(j);
-//【讲解 L767】结束当前代码块。
 }
-//【讲解 L768】函数 place：调整 Windows 控件位置，并扣除当前滚动偏移。
+
+/* ===================== 模块 11：控件布局 layout =====================
+ * 功能：根据窗口大小、当前页面和滚动位置，算出每个控件的位置并移过去。
+ * 场景：窗口缩放、滚动、切换页面、登录前后都会调用。Win32 没有 CSS 那样的自动布局，坐标都要自己算。
+ */
+// 移动控件时减去 scrollY：页面向下滚多少，控件就往上移多少，看起来就像在滚动
 static void place(HWND h,int x,int y,int w,int height){MoveWindow(h,x,y-scrollY,w,height,TRUE);}
-//【讲解 L769】函数 layout：按窗口、页面和滚动状态排列控件；这是原生布局，与浏览器 CSS 实现不同。
 static void layout(void) {
-    //【讲解 L770】读取窗口可用绘制区域。
+    // 算几条基准线：w 窗口宽；x 工作区左边（侧栏右侧）；cw 工作区宽；rail 右侧栏左边；labw 平面图卡片宽（至少 420）
     RECT r;GetClientRect(window,&r);int w=r.right,x=UI_SIDEBAR+32,cw=w-x-32,rail=w-324,labw=cw-308;
-    //【讲解 L771】检查本行条件，满足后执行紧随其后的语句或代码块。
     if(labw<420)labw=420;
-    //【讲解 L772】声明或更新 logged（登录标记）、page（当前页面编号）；按本行表达式保存对应状态。
+    // 设置滚动条：内容总高度按页面估算（预约页最长），每页高度等于窗口高度；再读回系统修正后的位置
     SCROLLINFO si={sizeof(si),SIF_RANGE|SIF_PAGE|SIF_POS,0,logged?(page==0?1160:page==1?1080:900):r.bottom,(UINT)r.bottom,scrollY,0};
-    //【讲解 L773】声明或更新 window（主窗口）；按本行表达式保存对应状态。
     SetScrollInfo(window,SB_VERT,&si,TRUE);GetScrollInfo(window,SB_VERT,&si);scrollY=si.nPos;
-    //【讲解 L774】调用 visibility，根据登录态、页面、角色及 busy 状态切换控件可见性和可操作性。
+    // 先按当前状态决定显示/隐藏
     visibility();
-    //【讲解 L775】调整控件位置和尺寸。
+    // 左侧栏：底部是"我是谁"，上面是 5 个导航按钮（显示顺序：预约、智能助手、我的、故障、用户管理）
     MoveWindow(whoText,20,r.bottom-170,188,64,TRUE);
-    //【讲解 L776】调整控件位置和尺寸。
     const int order[]={0,4,1,2,3};for(int k=0;k<5;k++)MoveWindow(navigation[order[k]],16,152+k*50,196,44,TRUE);
-    //【讲解 L777】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+    // 登录页：表单放在窗口右半边，宽度最多 430
     int fx=w/2+36,fw=w-fx-70; if(fw>430)fw=430;
-    //【讲解 L778】按本行初值、条件和步长循环；调整控件位置和尺寸。
     for(int i=0;i<4;i++){MoveWindow(labels[i],fx,170+i*70,fw,22,TRUE);}
-    //【讲解 L779】调整控件位置和尺寸。
     HWND inputs[]={identity,password,nameEdit,inviteEdit};for(int i=0;i<4;i++)MoveWindow(inputs[i],fx,195+i*70,fw,36,TRUE);
-    //【讲解 L780】调整控件位置和尺寸。
     MoveWindow(loginButton,fx,488,fw,40,TRUE);MoveWindow(registerButton,fx,540,fw,40,TRUE);MoveWindow(loginInfo,fx,600,fw,64,TRUE);
-    //【讲解 L781】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
+    // 工作区：帮助文字、日期框、开始/结束小时
     place(helpText,x,82,cw,28);
-    //【讲解 L782】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
     place(dateEdit,x+labw-200,294,175,34);place(startEdit,rail+16,330,120,300);place(endEdit,rail+156,330,120,300);
-    //【讲解 L783】按本行初值、条件和步长循环；调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
+    // 40 个设备按钮排成 5 行 8 列，第 4、5 列之间多留 32 像素当作"过道"，模拟实验室平面图
     for(int i=0;i<40;i++){int cell=(labw-48-7*8-32)/8;place(deviceButtons[i],x+24+(i%8)*(cell+8)+(i%8>=4?32:0),390+(i/8)*80,cell,68);}
-    //【讲解 L784】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
+    // 记录列表：预约页在平面图下方，其他页在上方
     place(list,x,page==0?880:page==1?800:160,page==0?labw:cw,page==1?220:page==0?220:480);
-    //【讲解 L785】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
     place(scheduleOptions,rail+22,548,246,300);
-    //【讲解 L786】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
     place(agentOptions,x,478,cw,300);
-    //【讲解 L787】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
     place(usageList,x,438,cw,220);place(agentReply,x+24,170,cw-48,280);
-    //【讲解 L788】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
     place(noteEdit,page==0?rail+22:x,page==0?866:page==1?1040:page==4?532:666,page==0?246:cw,36);
-    //【讲解 L789】调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
     place(profileFault,x+470,384,150,38);
-    //【讲解 L790】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+    // 19 个操作按钮："刷新""检查版本""退出账号"固定在侧栏底部；其余只排可见的——预约页竖着放在右侧栏，其他页从左到右横排
     int slot=0;
-    //【讲解 L791】按本行初值、条件和步长循环。
     for(int i=0;i<19;i++){
-      //【讲解 L792】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
       int id=actionIds[i];
-      //【讲解 L793】检查本行条件，满足后执行紧随其后的语句或代码块；调整控件位置和尺寸。
       if(id==ID_LOGOUT||id==ID_UPDATE||id==ID_REFRESH){int sy=id==ID_REFRESH?r.bottom-104:id==ID_UPDATE?r.bottom-68:r.bottom-36;MoveWindow(actions[i],20,sy,188,30,TRUE);continue;}
-      //【讲解 L794】检查本行条件，满足后执行紧随其后的语句或代码块；读取窗口状态或附加指针。
       if(!(GetWindowLongPtrW(actions[i],GWL_STYLE)&WS_VISIBLE))continue;
-      //【讲解 L795】检查本行条件，满足后执行紧随其后的语句或代码块；调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
       if(page==0){int sy=id==ID_BOOK?438:id==ID_SUGGEST?490:id==ID_CANCEL?862:id==ID_USE_CANDIDATE?592:814;place(actions[i],rail+22,sy,246,40);}
-      //【讲解 L796】处理另一分支；调用 place，调整 Windows 控件位置，并扣除当前滚动偏移。
       else{int sy=page==1?384:page==4?594:720;place(actions[i],x+slot*150,sy,140,38);++slot;}
-    //【讲解 L797】结束当前代码块。
     }
-    //【讲解 L798】调整控件位置和尺寸；请求重绘界面。
     MoveWindow(statusText,x,r.bottom-26,cw,22,TRUE);InvalidateRect(window,NULL,TRUE);
-//【讲解 L799】结束当前代码块。
 }
-//【讲解 L800】函数 box：绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷。
-static void box(HDC dc,int x,int y,int w,int h,COLORREF fill){HBRUSH b=CreateSolidBrush(fill);HPEN pen=CreatePen(PS_SOLID,1,BORDER);HGDIOBJ ob=SelectObject(dc,b),op=SelectObject(dc,pen);RoundRect(dc,x,y-scrollY,x+w,y+h-scrollY,32,32);SelectObject(dc,ob);SelectObject(dc,op);DeleteObject(b);DeleteObject(pen);}
-//【讲解 L801】函数 text：用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
-static void text(HDC dc,int x,int y,int w,int h,const char *value,HFONT f,COLORREF color){RECT r={x,y-scrollY,x+w,y+h-scrollY};wchar_t *s=wide(value);SelectObject(dc,f);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color);DrawTextW(dc,s,-1,&r,DT_LEFT|DT_WORDBREAK|DT_NOPREFIX);free(s);}
-//【讲解 L802】函数 paint_workspace：绘制工作区背景、侧栏、卡片及标题；具体设备按钮等仍是原生控件。
+
+/* ===================== 模块 12：绘制背景和卡片 paint_workspace =====================
+ * 功能：画出页面上不属于控件的部分：背景、白色侧栏、圆角卡片、标题说明、"已选择几台设备"等统计。
+ * 场景：窗口需要重画（WM_PAINT）时调用；预览截图时也用它画到内存里。
+ * 要点：GDI 画刷、画笔是系统资源，Create 之后必须 DeleteObject，否则每次重画都泄漏一点，最终界面画不出来。
+ *       SelectObject 会返回原来的对象，用完要先选回去，再删除自己创建的。
+ */
+static void box(HDC dc,int x,int y,int w,int h,COLORREF fill){ // 画一个圆角卡片：fill 填充色，边框用 BORDER
+    HBRUSH b=CreateSolidBrush(fill);HPEN pen=CreatePen(PS_SOLID,1,BORDER);      // 创建填充画刷和边框画笔
+    HGDIOBJ ob=SelectObject(dc,b),op=SelectObject(dc,pen);                      // 选进画布，同时记下原来的
+    RoundRect(dc,x,y-scrollY,x+w,y+h-scrollY,32,32);                            // 画圆角矩形（随滚动上移）
+    SelectObject(dc,ob);SelectObject(dc,op);DeleteObject(b);DeleteObject(pen);} // 换回原来的，再删除自己创建的
+static void text(HDC dc,int x,int y,int w,int h,const char *value,HFONT f,COLORREF color){ // 在指定矩形里画一段 UTF-8 文字，太长自动换行
+    RECT r={x,y-scrollY,x+w,y+h-scrollY};wchar_t *s=wide(value);
+    SelectObject(dc,f);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color); // 字体、透明背景、颜色
+    DrawTextW(dc,s,-1,&r,DT_LEFT|DT_WORDBREAK|DT_NOPREFIX);free(s);}     // DT_NOPREFIX：不把 & 当成快捷键标记
 static void paint_workspace(HDC dc){
-    //【讲解 L803】读取窗口可用绘制区域。
+    // 铺满背景色，并算出和 layout 相同的基准线
     RECT r;GetClientRect(window,&r);FillRect(dc,&r,background);int w=r.right,x=UI_SIDEBAR+32,cw=w-x-32,rail=w-324,labw=cw-308;
-    //【讲解 L804】检查本行条件，满足后执行紧随其后的语句或代码块；调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
+    // 未登录：画登录页——左边标语，右边白色卡片放登录表单
     if(!logged){box(dc,w/2,100,w/2-40,620,RGB(255,255,255));text(dc,64,180,w/2-100,40,"NJUPT · 实验室预约",bold,MUTED);text(dc,64,245,w/2-100,100,"把时间留给探索",heroFont,INK);text(dc,64,370,w/2-100,80,"选定设备，约好时间。\n设备、时段和你的记录，都在这里。",font,MUTED);text(dc,w/2+36,120,400,40,"欢迎回来",headingFont,INK);return;}
-    //【讲解 L805】执行 FillRect、GetStockObject，参数沿用本行给出的对象、标志和容量。
+    // 已登录：左侧白色侧栏
     RECT side={0,0,UI_SIDEBAR,r.bottom};FillRect(dc,&side,(HBRUSH)GetStockObject(WHITE_BRUSH));
-    /* Sidebar stays anchored while the workspace scrolls. */
-    //【讲解 L807】调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
+    /* 侧栏不跟随滚动：临时把 scrollY 设为 0 画图标和标题，画完再恢复 */
     int old=scrollY;scrollY=0;DrawIconEx(dc,20,26,LoadIconW(GetModuleHandleW(NULL),MAKEINTRESOURCEW(1)),28,28,0,NULL,DI_NORMAL);text(dc,58,30,160,40,"NJUPT 实验室预约",bold,INK);scrollY=old;
-    //【讲解 L808】调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串；调用 ui_page_title，按页面编号返回统一中文标题。
+    // 工作区顶部：小标题和当前页面名称
     text(dc,x,22,cw,20,"NJUPT · 实验室预约",font,MUTED);text(dc,x,48,cw,40,ui_page_title(page),headingFont,INK);
-    //【讲解 L809】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 预约页：标语、"三步完成"卡片、实验室平面图卡片、预约时间卡片
     if(page==0){
-      //【讲解 L810】调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串；调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷。
       text(dc,x,208,cw,56,"把时间留给探索",heroFont,INK);box(dc,rail,112,292,130,RGB(252,252,251));text(dc,rail+22,132,248,28,"预约流程 · 三步完成",bold,INK);text(dc,rail+22,180,248,46,"01 选择设备   02 设置时间\n03 确认预约",font,MUTED);
-      //【讲解 L811】调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
       box(dc,x,272,labw,530,RGB(255,255,255));text(dc,x+24,296,250,28,"实验室平面图",bold,INK);text(dc,x+24,335,labw-48,28,"* 空闲    已预约    使用中    ! 故障    已选择",font,MUTED);
-      //【讲解 L812】调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
       box(dc,rail,272,292,286,RGB(255,255,255));text(dc,rail+22,294,248,28,"预约时间",bold,INK);
-      //【讲解 L813】按容量格式化 UTF-8 文本；调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
-      int n=0;for(int i=0;i<40;i++)n+=selected[i];char selection[96];snprintf(selection,sizeof(selection),n?"已选择 %d 台设备":"尚未选择设备",n);box(dc,rail+22,382,246,38,RGB(239,240,255));text(dc,rail+34,391,218,24,selection,font,INK);int faulty=0;const cJSON *dv;cJSON_ArrayForEach(dv,model.devices)if(strcmp(lab_str(dv,"status"),"available"))++faulty;char count[100];snprintf(count,sizeof(count),"%d / 40\n台设备可预约",40-faulty);box(dc,rail,584,292,190,RGB(255,255,255));text(dc,rail+22,604,246,24,"实验室状态",bold,INK);text(dc,rail+22,646,246,100,count,headingFont,ACCENT);text(dc,x,838,labw,30,"近期预约",bold,INK);
-    //【讲解 L814】上一条件不成立时检查下一条件。
+      int n=0;for(int i=0;i<40;i++)n+=selected[i];char selection[96];snprintf(selection,sizeof(selection),n?"已选择 %d 台设备":"尚未选择设备",n); // 统计选了几台设备
+      box(dc,rail+22,382,246,38,RGB(239,240,255));text(dc,rail+34,391,218,24,selection,font,INK);
+      int faulty=0;const cJSON *dv;cJSON_ArrayForEach(dv,model.devices)if(strcmp(lab_str(dv,"status"),"available"))++faulty; // 统计不可用的设备
+      char count[100];snprintf(count,sizeof(count),"%d / 40\n台设备可预约",40-faulty);
+      box(dc,rail,584,292,190,RGB(255,255,255));text(dc,rail+22,604,246,24,"实验室状态",bold,INK);text(dc,rail+22,646,246,100,count,headingFont,ACCENT); // "实验室状态"卡片
+      text(dc,x,838,labw,30,"近期预约",bold,INK); // 平面图下方列表的标题
+    // 我的页：身份卡片、今天的预约数、预约偏好（常用设备和时段）、签到区和记录区标题
     } else if(page==1){
-      //【讲解 L815】调用 date_string，将日期控件的年月日格式化为 YYYY-MM-DD；调用 ui_summary，根据当前用户非取消预约统计当日记录、常用设备及时段；按容量格式化 UTF-8 文本。
       char today[160],prefs[256],identityText[256],date[16];date_string(date);ui_summary(&model,&client.session,date,today,sizeof(today),prefs,sizeof(prefs));snprintf(identityText,sizeof(identityText),"%s  ·  %s  ·  %s",client.session.name,admin()?"管理员":"学生",client.session.login);
-      //【讲解 L816】调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
       box(dc,x,124,cw,94,RGB(255,255,255));text(dc,x+24,148,cw-48,32,identityText,headingFont,INK);text(dc,x+24,188,cw-48,22,"个人资料 · 使用与网页相同的云端账号",font,MUTED);
-      //【讲解 L817】调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
       box(dc,x,238,cw/2-8,104,RGB(255,255,255));text(dc,x+22,254,cw/2-40,25,"今天的预约",bold,INK);text(dc,x+22,290,cw/2-40,44,today,font,MUTED);
-      //【讲解 L818】调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
       box(dc,x+cw/2+8,238,cw/2-8,104,RGB(255,255,255));text(dc,x+cw/2+30,254,cw/2-40,25,"预约偏好",bold,INK);text(dc,x+cw/2+30,290,cw/2-48,44,prefs,font,MUTED);
-      //【讲解 L819】调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
       text(dc,x,354,cw,28,"手动签到与签退",bold,INK);text(dc,x,748,cw,30,"我的预约",bold,INK);text(dc,x,780,cw,20,"完整记录与实际使用时间（北京时间）",font,MUTED);
-    //【讲解 L820】上一条件不成立时检查下一条件；调用 box，绘制圆角背景区域，结束前恢复并释放 GDI 画笔、画刷；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
+    // 助手页：对话卡片和输入提示；故障页和用户管理页：一行说明
     } else if(page==4){box(dc,x,124,cw,350,RGB(255,255,255));text(dc,x+24,142,cw-48,24,"智能助手",bold,INK);text(dc,x,464,cw,24,"输入设备、日期或时段需求，获取预约建议。",font,MUTED);}
-    //【讲解 L821】处理另一分支；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
     else text(dc,x,122,cw,24,page==2?"故障说明和维修进度":"用户和账号管理",font,MUTED);
-    //【讲解 L822】检查本行条件，满足后执行紧随其后的语句或代码块；调用 text，用指定字体和颜色绘制 UTF-8 文本，转换后释放临时宽字符串。
+    // 预览模式下在页面底部注明"示例数据"
     if(preview)text(dc,x,1112,cw,24,"界面预览 · 示例数据 · 未连接真实账号",font,MUTED);
-//【讲解 L823】结束当前代码块。
 }
-/* Capture only our fixture window; never reads another application's pixels. */
-//【讲解 L825】函数 preview_child：将需要显示的子控件绘制到预览内存画布，用于离线截图检查。
+/* ===================== 模块 13：预览截图 =====================
+ * 功能：用 --preview=xxx --preview-output=路径 启动时，载入示例数据，2.5 秒后把窗口画成 BMP 图片保存并退出。
+ * 场景：开发时自动检查界面效果，不需要真实账号。只截本程序自己的窗口，不读取其他程序的画面。
+ */
+// 把一个可见的子控件画到内存画布上对应的位置
 static BOOL CALLBACK preview_child(HWND child,LPARAM value) {
- //【讲解 L826】检查本行条件，满足后执行紧随其后的语句或代码块；读取窗口状态或附加指针。
+ // 只处理主窗口的直接子控件，且必须可见
  if(GetParent(child)!=window || !(GetWindowLongPtrW(child,GWL_STYLE)&WS_VISIBLE))return TRUE;
- //【讲解 L827】声明或更新 window（主窗口）；按本行表达式保存对应状态。
+ // 算出子控件在主窗口里的坐标
  HDC dc=(HDC)value;RECT rect;GetWindowRect(child,&rect);POINT pos={rect.left,rect.top};ScreenToClient(window,&pos);
- //【讲解 L828】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+ // 临时把画布原点移到控件左上角，让控件以为自己在 (0,0) 作画
  int saved=SaveDC(dc);SetViewportOrgEx(dc,pos.x,pos.y,NULL);
- //【讲解 L829】同步读写控件状态。
+ // WM_PRINT：请控件把自己画到我们给的画布上；画完恢复画布原点
  SendMessageW(child,WM_PRINT,(WPARAM)dc,PRF_CLIENT|PRF_ERASEBKGND|PRF_CHILDREN);RestoreDC(dc,saved);return TRUE;
-//【讲解 L830】结束当前代码块。
 }
-//【讲解 L831】函数 preview_capture：导出示例页面截图；使用预览夹具，不会证明真实登录、预约成功。
+// 整窗截图：先在内存画布上画背景，再逐个叠上子控件，最后写成 BMP 文件
 static int preview_capture(HWND h) {
- //【讲解 L832】读取窗口可用绘制区域；选择 GDI 绘图对象。
  RECT r;GetClientRect(h,&r);int w=r.right,height=r.bottom;HDC dc=GetDC(h),mem=CreateCompatibleDC(dc);HBITMAP bitmap=CreateCompatibleBitmap(dc,w,height);HGDIOBJ old=SelectObject(mem,bitmap);
- //【讲解 L833】调用 paint_workspace，绘制工作区背景、侧栏、卡片及标题；选择 GDI 绘图对象。
  paint_workspace(mem);EnumChildWindows(h,preview_child,(LPARAM)mem);SelectObject(mem,old);
- //【讲解 L834】执行 ，参数沿用本行给出的对象、标志和容量。
+ // BMP 图像信息：32 位色；高度写成负数表示像素从上往下存放
  BITMAPINFO info={0};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=w;info.bmiHeader.biHeight=-height;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;
- //【讲解 L835】申请并清零堆内存。
+ // 把内存画布的像素取到 pixels 数组
  DWORD bytes=(DWORD)(w*height*4);void *pixels=calloc(1,bytes);int ok=pixels&&GetDIBits(dc,bitmap,0,height,pixels,&info,DIB_RGB_COLORS);FILE *f=NULL;
- //【讲解 L836】检查本行条件，满足后执行紧随其后的语句或代码块。
  if(ok)f=_wfopen(previewOutput,L"wb");
- //【讲解 L837】检查本行条件，满足后执行紧随其后的语句或代码块；按字节写入文件；关闭文件。
+ // 写文件：文件头（"BM" 标记 0x4d42）→ 图像信息头 → 像素数据，三次写入都成功才算成功
  if(f){BITMAPFILEHEADER file={0};file.bfType=0x4d42;file.bfOffBits=sizeof(file)+sizeof(BITMAPINFOHEADER);file.bfSize=file.bfOffBits+bytes;ok=fwrite(&file,sizeof(file),1,f)==1&&fwrite(&info.bmiHeader,sizeof(BITMAPINFOHEADER),1,f)==1&&fwrite(pixels,bytes,1,f)==1;fclose(f);}else ok=0;
- //【讲解 L838】释放堆内存；释放 GDI 绘图资源。
+ // 释放内存和所有 GDI 资源
  free(pixels);DeleteObject(bitmap);DeleteDC(mem);ReleaseDC(h,dc);return ok;
-//【讲解 L839】结束当前代码块。
 }
-//【讲解 L840】函数 wndproc：Windows 主消息入口，处理创建、点击、绘制、尺寸、滚动、后台结果及退出清理。
+
+/* ===================== 模块 14：主窗口消息处理 wndproc =====================
+ * 功能：Windows 把发生在窗口上的一切（创建、点击、重画、滚动、定时器、后台结果……）都以"消息"送到这里，
+ *       switch(msg) 按消息种类分别处理。返回 0 表示"已处理"，没处理的交给 DefWindowProcW 做默认处理。
+ */
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
-    //【讲解 L841】根据消息或任务类型选择处理分支。
     switch (msg) {
-    //【讲解 L842】处理 WM_CREATE 对应的事件或任务。
+    // 【WM_CREATE】窗口刚创建：建好字体和所有控件，然后启动定时刷新和版本检查
     case WM_CREATE: {
-        //【讲解 L843】声明或更新 window（主窗口）；按本行表达式保存对应状态。
         window = h;
-        //【讲解 L844】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+        // 字体：微软雅黑 15 像素，再派生粗体、28 像素标题、34 像素大标语
         LOGFONTW lf = {0};
-        //【讲解 L845】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         lf.lfHeight = -15;
-        //【讲解 L846】执行 wcscpy，参数沿用本行给出的对象、标志和容量。
         wcscpy(lf.lfFaceName, L"Microsoft YaHei");
-        //【讲解 L847】创建字体对象。
         font = CreateFontIndirectW(&lf);
-        //【讲解 L848】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         lf.lfWeight = FW_BOLD;
-        //【讲解 L849】创建字体对象。
         bold = CreateFontIndirectW(&lf);
-        //【讲解 L850】创建纯色画刷。
         background = CreateSolidBrush(BG);
-        //【讲解 L851】创建字体对象。
         lf.lfHeight=-28;headingFont=CreateFontIndirectW(&lf);lf.lfHeight=-34;heroFont=CreateFontIndirectW(&lf);
-        //【讲解 L852】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+        // 侧栏 5 个导航按钮（编号 600~604）和"我的故障记录"按钮（605，点击后跳到故障页）
         const wchar_t *navNames[]={L"预约",L"我的",L"故障记录",L"用户管理",L"智能助手"};
-        //【讲解 L853】按本行初值、条件和步长循环；调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         for(int i=0;i<5;i++)navigation[i]=control(L"BUTTON",navNames[i],BS_OWNERDRAW|WS_TABSTOP,600+i,16,152+i*50,196,44);
-        //【讲解 L854】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         profileFault=control(L"BUTTON",L"我的故障记录",BS_OWNERDRAW|WS_TABSTOP,605,260,340,150,38);
-        //【讲解 L855】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
+        // 两个方案下拉框、助手对话显示框（只读多行）、左下角"我是谁"
         scheduleOptions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,0,940,548,246,300);
-        //【讲解 L856】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         agentOptions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,0,260,478,800,300);
-        //【讲解 L857】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         agentReply=control(L"EDIT",L"告诉我你的预约需求。",ES_MULTILINE|ES_READONLY|WS_VSCROLL,0,260,170,800,280);
-        //【讲解 L858】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         whoText = control(L"STATIC", L"", 0, 0, 500, 20, 570, 26);
-        //【讲解 L859】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+        // 登录页：4 个标题 + 4 个输入框（密码框用 ES_PASSWORD 显示成圆点）+ 登录/注册按钮 + 说明文字
         const wchar_t *texts[] = {L"学号 / 邮箱", L"密码", L"姓名（注册）", L"管理员邀请码（可选）"};
-        //【讲解 L860】按本行初值、条件和步长循环。
         for (int i = 0; i < 4; i++)
-            //【讲解 L861】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
             labels[i] = control(L"STATIC", texts[i], 0, 0, 155, 120 + i * 65, 280, 24);
-        //【讲解 L862】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         identity = control(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, 0, 450, 120, 370, 30);
-        //【讲解 L863】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         password = control(L"EDIT", L"", WS_BORDER | ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP, 0, 450, 185,
-                           //【讲解 L864】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                            370, 30);
-        //【讲解 L865】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         nameEdit = control(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, 0, 450, 250, 370, 30);
-        //【讲解 L866】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         inviteEdit = control(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, 0, 450, 315, 370, 30);
-        //【讲解 L867】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         loginButton = control(L"BUTTON", L"登录并继续", BS_OWNERDRAW | WS_TABSTOP, ID_LOGIN, 450, 380, 175, 38);
-        //【讲解 L868】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         registerButton = control(L"BUTTON", L"创建账号", BS_OWNERDRAW | WS_TABSTOP, ID_REGISTER, 645, 380, 175, 38);
-        //【讲解 L869】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         loginInfo = control(L"STATIC",
-                            //【讲解 L870】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                             L"使用与网页相同的云端账号。\n学生使用学号；管理员使用邮箱。",
-                            //【讲解 L871】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                             0, 0, 155, 460, 800, 80);
-        //【讲解 L872】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
+        // 旧版标签页（现在隐藏不用，保留是因为通知处理里还在引用它）
         tabs = control(WC_TABCONTROLW, L"", WS_TABSTOP, ID_TAB, 24, 54, 440, 32);
-        //【讲解 L873】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         const wchar_t *tabNames[] = {L"设备预约", L"我的预约", L"故障管理", L"账号管理"};
-        //【讲解 L874】按本行初值、条件和步长循环。
         for (int i = 0; i < 4; i++) {
-            //【讲解 L875】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             TCITEMW t = {0};
-            //【讲解 L876】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             t.mask = TCIF_TEXT;
-            //【讲解 L877】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             t.pszText = (LPWSTR)tabNames[i];
-            //【讲解 L878】同步读写控件状态。
             SendMessageW(tabs, TCM_INSERTITEMW, (WPARAM)i, (LPARAM)&t);
-        //【讲解 L879】结束当前代码块。
         }
-        //【讲解 L880】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+        // 日期框：显示成 yyyy-MM-dd，默认北京时间今天
         dateEdit =
-            //【讲解 L881】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
             control(DATETIMEPICK_CLASSW, L"", DTS_SHORTDATEFORMAT | WS_TABSTOP, ID_DATE, 490, 55, 180, 30);
-        //【讲解 L882】执行 DateTime_SetFormat，参数沿用本行给出的对象、标志和容量。
         DateTime_SetFormat(dateEdit, L"yyyy-MM-dd");
-        //【讲解 L883】调用 today_beijing，以 UTC 加八小时确定北京当天，再设置日期控件。
         today_beijing();
-        //【讲解 L884】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
+        // 开始/结束小时下拉框：开始 08:00~16:00，结束 09:00~17:00，默认都选第一项
         startEdit = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_START, 685, 55,
-                            //【讲解 L885】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                             130, 300);
-        //【讲解 L886】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         endEdit =
-            //【讲解 L887】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
             control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_END, 830, 55, 130, 300);
-        //【讲解 L888】按本行初值、条件和步长循环。
         for (int i = 0; i < 9; i++) {
-            //【讲解 L889】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
             wchar_t b[50];
-            //【讲解 L890】格式化宽字符文本。
             swprintf(b, 50, L"开始 %02d:00", i + 8);
-            //【讲解 L891】同步读写控件状态。
             SendMessageW(startEdit, CB_ADDSTRING, 0, (LPARAM)b);
-            //【讲解 L892】格式化宽字符文本。
             swprintf(b, 50, L"结束 %02d:00", i + 9);
-            //【讲解 L893】同步读写控件状态。
             SendMessageW(endEdit, CB_ADDSTRING, 0, (LPARAM)b);
-        //【讲解 L894】结束当前代码块。
         }
-        //【讲解 L895】同步读写控件状态。
         SendMessageW(startEdit, CB_SETCURSEL, 0, 0);
-        //【讲解 L896】同步读写控件状态。
         SendMessageW(endEdit, CB_SETCURSEL, 0, 0);
-        //【讲解 L897】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
+        // 帮助文字、40 个设备按钮（BS_OWNERDRAW：外观由我们在 WM_DRAWITEM 里自己画）
         helpText = control(L"STATIC", L"", 0, 0, 24, 91, 1040, 28);
-        //【讲解 L898】按本行初值、条件和步长循环。
         for (int i = 0; i < 40; i++)
-            //【讲解 L899】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
             deviceButtons[i] = control(L"BUTTON", L"", BS_OWNERDRAW | WS_TABSTOP, ID_FIRST_DEVICE + i,
-                                       //【讲解 L900】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                                        24 + (i % 10) * 104, 127 + (i / 10) * 44, 95, 35);
-        //【讲解 L901】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
+        // 记录列表和"我的"页的使用记录表（编号 210）：整行选中、双缓冲防闪烁、白底
         list = control(WC_LISTVIEWW, L"", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, ID_LIST, 24,
-                       //【讲解 L902】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                        315, 1040, 230);
-        //【讲解 L903】执行 ListView_SetExtendedListViewStyle，参数沿用本行给出的对象、标志和容量。
         ListView_SetExtendedListViewStyle(list,
-                                          //【讲解 L904】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                                           LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-        //【讲解 L905】执行 ListView_SetBkColor、RGB、ListView_SetTextBkColor，参数沿用本行给出的对象、标志和容量。
         ListView_SetBkColor(list,RGB(255,255,255));ListView_SetTextBkColor(list,RGB(255,255,255));ListView_SetTextColor(list,INK);
-        //【讲解 L906】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         usageList=control(WC_LISTVIEWW,L"",LVS_REPORT|LVS_SINGLESEL|WS_BORDER|WS_TABSTOP,210,260,438,800,220);
-        //【讲解 L907】执行 ListView_SetExtendedListViewStyle，参数沿用本行给出的对象、标志和容量。
         ListView_SetExtendedListViewStyle(usageList,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
-        //【讲解 L908】执行 ListView_SetBkColor、RGB、ListView_SetTextBkColor，参数沿用本行给出的对象、标志和容量。
         ListView_SetBkColor(usageList,RGB(255,255,255));ListView_SetTextBkColor(usageList,RGB(255,255,255));ListView_SetTextColor(usageList,INK);
-        //【讲解 L909】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
+        // 说明框（多用途输入框，空的时候显示灰色提示文字）、19 个操作按钮、底部状态栏
         noteEdit = control(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, 0, 24, 560, 1040, 28);
-        //【讲解 L910】同步读写控件状态。
         SendMessageW(noteEdit, EM_SETCUEBANNER, TRUE,
-                     //【讲解 L911】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                      (LPARAM)L"故障 / 维修说明或智能助手问题；修改资料：姓名|登录名");
-        //【讲解 L912】按本行初值、条件和步长循环。
         for (int i = 0; i < 19; i++)
-            //【讲解 L913】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
             actions[i] = control(L"BUTTON", actionNames[i], BS_OWNERDRAW|WS_TABSTOP, actionIds[i], 24, 600, 135, 30);
-        //【讲解 L914】调用 control，创建 Windows 子控件并设置共用字体，返回 HWND 句柄。
         statusText = control(L"STATIC", L"欢迎使用。所有预约时段按北京时间计算。", 0, 0, 24, 650, 1040, 24);
-        //【讲解 L915】检查本行条件，满足后执行紧随其后的语句或代码块；更新控件文字；调用 ui_preview_model，生成离线截图用示例用户、设备和预约，不读取生产数据库；调用 render，按页面、账号、日期和设备状态更新控件内容。
+        // 预览模式：载入示例数据，直接进入指定页面；正常模式：每 30 秒触发一次定时器自动刷新
         if(preview){SetWindowTextW(statusText,L"界面预览 · 示例数据 · 未连接真实账号");ui_preview_model(&client,&model);logged=preview!=1;page=preview==3?1:preview==4?4:0;render();}
-        //【讲解 L916】处理另一分支。
         else SetTimer(h,1,30000,NULL);
-        //【讲解 L917】调用 layout，按窗口、页面和滚动状态排列控件。
         layout();
-        //【讲解 L918】申请并清零堆内存。
+        // 启动时在后台检查一次新版本
         Job *j = calloc(1, sizeof(*j));
-        //【讲解 L919】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (j && !preview) {
-            //【讲解 L920】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             j->kind = JOB_UPDATE;
-            //【讲解 L921】调用 start_job，保存任务快照、设置忙状态并启动后台线程。
             start_job(j);
-        //【讲解 L922】处理另一分支；释放堆内存。
         }else free(j);
-        //【讲解 L923】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L924】结束当前代码块。
     }
-    //【讲解 L925】处理 WM_PRINTCLIENT 对应的事件或任务。
+    // 【WM_PRINTCLIENT / WM_PAINT】需要重画时，画背景和卡片（控件会自己画自己）
     case WM_PRINTCLIENT:paint_workspace((HDC)wp);return 0;
-    //【讲解 L926】处理 WM_PAINT 对应的事件或任务。
     case WM_PAINT:{PAINTSTRUCT ps;HDC dc=BeginPaint(h,&ps);paint_workspace(dc);EndPaint(h,&ps);return 0;}
-    //【讲解 L927】处理 WM_MOUSEWHEEL 对应的事件或任务。
+    // 【WM_MOUSEWHEEL】滚轮每格滚动 80 像素，不能滚到顶部以上；然后重新布局
     case WM_MOUSEWHEEL:scrollY-=GET_WHEEL_DELTA_WPARAM(wp)/WHEEL_DELTA*80;if(scrollY<0)scrollY=0;layout();return 0;
-    //【讲解 L928】处理 WM_VSCROLL 对应的事件或任务。
+    // 【WM_VSCROLL】拖动或点击滚动条：拖动时跟随滑块，点箭头每次 40 像素，点空白处翻一页
     case WM_VSCROLL:{SCROLLINFO si={0};si.cbSize=sizeof(si);si.fMask=SIF_ALL;GetScrollInfo(h,SB_VERT,&si);int code=LOWORD(wp);if(code==SB_THUMBTRACK)scrollY=si.nTrackPos;else if(code==SB_LINEUP)scrollY-=40;else if(code==SB_LINEDOWN)scrollY+=40;else if(code==SB_PAGEUP)scrollY-=si.nPage;else if(code==SB_PAGEDOWN)scrollY+=si.nPage;if(scrollY<0)scrollY=0;layout();return 0;}
-    //【讲解 L929】处理 WM_SIZE 对应的事件或任务。
+    // 【WM_SIZE】窗口大小改变：重新布局（list 还没创建时跳过）
     case WM_SIZE:
-        //【讲解 L930】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (list)
-            //【讲解 L931】调用 layout，按窗口、页面和滚动状态排列控件。
             layout();
-        //【讲解 L932】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L933】处理 WM_GETMINMAXINFO 对应的事件或任务。
+    // 【WM_GETMINMAXINFO】限制窗口最小 1200×800，太小布局会挤在一起
     case WM_GETMINMAXINFO:
-        //【讲解 L934】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         ((MINMAXINFO *)lp)->ptMinTrackSize.x = 1200;
-        //【讲解 L935】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         ((MINMAXINFO *)lp)->ptMinTrackSize.y = 800;
-        //【讲解 L936】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L937】处理 WM_COMMAND 对应的事件或任务。
+    // 【WM_COMMAND】按钮被点击或下拉框选择变化
     case WM_COMMAND: {
-        //【讲解 L938】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
         int id = LOWORD(wp);
-        //【讲解 L939】检查本行条件，满足后执行紧随其后的语句或代码块；调用 admin，根据云端加载的 session.role 判断是否显示管理入口；调用 render，按页面、账号、日期和设备状态更新控件内容；调用 layout，按窗口、页面和滚动状态排列控件。
+        // 侧栏导航：切换页面。605 是"我的故障记录"，跳到故障页；学生不能进用户管理页
         if(id>=600&&id<=605){if(busy)return 0;page=id==605?2:id-600;if(page==3&&!admin())page=1;scrollY=0;render();layout();return 0;}
-        //【讲解 L940】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 预览模式只允许点设备按钮
         if(preview&&!(id>=ID_FIRST_DEVICE&&id<ID_FIRST_DEVICE+40))return 0;
-        //【讲解 L941】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 设备按钮：在选中/未选中之间切换，并重画该按钮和窗口（右侧"已选择 N 台"要跟着变）
         if (id >= ID_FIRST_DEVICE && id < ID_FIRST_DEVICE + 40) {
-            //【讲解 L942】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
             int i = id - ID_FIRST_DEVICE;
-            //【讲解 L943】声明或更新 selected（设备选择状态）；按本行表达式保存对应状态。
             selected[i] = !selected[i];
-            //【讲解 L944】请求重绘界面。
             InvalidateRect(deviceButtons[i], NULL, TRUE);
-            //【讲解 L945】请求重绘界面。
             InvalidateRect(window,NULL,TRUE);
-        //【讲解 L946】上一条件不成立时检查下一条件。
+        // 改了开始/结束小时：重画，设备颜色要反映新时段是否被占用
         } else if (id == ID_START || id == ID_END) {
-            //【讲解 L947】检查本行条件，满足后执行紧随其后的语句或代码块。
             if (HIWORD(wp) == CBN_SELCHANGE)
-                //【讲解 L948】调用 render，按页面、账号、日期和设备状态更新控件内容。
                 render();
-        //【讲解 L949】上一条件不成立时检查下一条件。
+        // 其他按钮：交给 command 处理
         } else if (HIWORD(wp) == BN_CLICKED)
-            //【讲解 L950】调用 command，把按钮编号映射成具体操作。
             command(id);
-        //【讲解 L951】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L952】结束当前代码块。
     }
-    //【讲解 L953】处理 WM_NOTIFY 对应的事件或任务。
+    // 【WM_NOTIFY】列表、标签页、日期框这类通用控件用 WM_NOTIFY 报告变化
     case WM_NOTIFY: {
-        //【讲解 L954】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         NMHDR *n = (NMHDR *)lp;
-        //【讲解 L955】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 用户在列表里选中了一行：记下这条记录的 id 和来自哪张表。render 重填期间（rendering=1）产生的通知忽略
         if(!rendering&&(n->idFrom==ID_LIST||n->idFrom==210)&&n->code==LVN_ITEMCHANGED){
-            //【讲解 L956】按容量格式化 UTF-8 文本；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
             NMLISTVIEW *v=(NMLISTVIEW *)lp;if((v->uNewState&LVIS_SELECTED)&&v->iItem>=0&&v->iItem<listedCount){selectedTable=n->idFrom==210;snprintf(selectedId,sizeof(selectedId),"%s",lab_str(listed[v->iItem],"id"));}
-        //【讲解 L957】结束当前代码块。
         }
-        //【讲解 L958】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 旧标签页切换（已隐藏，基本不会触发）
         if (n->idFrom == ID_TAB && n->code == TCN_SELCHANGE) {
-            //【讲解 L959】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
             page = TabCtrl_GetCurSel(tabs);
-            //【讲解 L960】检查本行条件，满足后执行紧随其后的语句或代码块；调用 admin，根据云端加载的 session.role 判断是否显示管理入口。
             if (page == 3 && !admin()) {
-                //【讲解 L961】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
                 page = 1;
-                //【讲解 L962】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
                 TabCtrl_SetCurSel(tabs, page);
-                //【讲解 L963】调用 tell，显示平台消息提示。
                 tell("账号管理需要管理员权限。", MB_ICONINFORMATION);
-            //【讲解 L964】结束当前代码块。
             }
-            //【讲解 L965】调用 render，按页面、账号、日期和设备状态更新控件内容。
             render();
-            //【讲解 L966】调用 visibility，根据登录态、页面、角色及 busy 状态切换控件可见性和可操作性。
             visibility();
-        //【讲解 L967】结束当前代码块。
         }
-        //【讲解 L968】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 日期改了：重画列表和设备颜色
         if (n->idFrom == ID_DATE && n->code == DTN_DATETIMECHANGE && logged)
-            //【讲解 L969】调用 render，按页面、账号、日期和设备状态更新控件内容。
             render();
-        //【讲解 L970】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L971】结束当前代码块。
     }
-    //【讲解 L972】处理 RESULT_MESSAGE 对应的事件或任务。
+    // 【RESULT_MESSAGE】后台任务完成，worker 寄回了 Job。这里运行在界面线程，可以安全地改全局数据和控件
     case RESULT_MESSAGE: {
-        //【讲解 L973】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         Job *j = (Job *)lp;
-        //【讲解 L974】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 版本检查的结果：有新版本就询问是否用浏览器打开下载页
         if (j->kind == JOB_UPDATE) {
-            //【讲解 L975】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             checkingUpdate = 0;
-            //【讲解 L976】检查本行条件，满足后执行紧随其后的语句或代码块。
             if (j->ok) {
-                //【讲解 L977】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
                 wchar_t *w = wide(j->message);
-                //【讲解 L978】检查本行条件，满足后执行紧随其后的语句或代码块。
                 if (MessageBoxW(h, w, L"桌面版本更新", MB_YESNO | MB_ICONINFORMATION) == IDYES)
-                    //【讲解 L979】执行 ShellExecuteW，参数沿用本行给出的对象、标志和容量。
                     ShellExecuteW(h, L"open",
-                                  //【讲解 L980】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                                   L"https://alexis-zhang0503.github.io/intelligent-lab-booking-system/"
-                                  //【讲解 L981】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                                   L"downloads/LabReservation-Windows-x64.zip",
-                                  //【讲解 L982】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                                   NULL, NULL, SW_SHOWNORMAL);
-                //【讲解 L983】释放堆内存。
                 free(w);
-            //【讲解 L984】结束当前代码块。
             }
-            //【讲解 L985】检查本行条件，满足后执行紧随其后的语句或代码块。
             if (!busy)
-                //【讲解 L986】更新控件文字。
                 SetWindowTextW(statusText, L"原生 C 3.1.0 · 云端数据每 30 秒刷新");
-        //【讲解 L987】处理另一分支。
+        // 其他任务的结果
         } else {
-            //【讲解 L988】声明或更新 busy（请求忙标记）；按本行表达式保存对应状态。
+            // 解除忙碌；采用后台线程更新过的登录状态（令牌可能被自动刷新过）
             busy = 0;
-            //【讲解 L989】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
             client = j->client;
-            //【讲解 L990】检查本行条件，满足后执行紧随其后的语句或代码块；释放 JSON 对象及其子节点；深复制 JSON 节点，隔离所有权。
+            // 智能推荐：保存一份候选方案的深拷贝，供下拉框使用
             if(j->kind==JOB_SUGGEST&&j->agentResult){cJSON_Delete(scheduleCandidates);scheduleCandidates=cJSON_Duplicate(j->agentResult,1);}
-            //【讲解 L991】检查本行条件，满足后执行紧随其后的语句或代码块；比较字符串内容；调用 lab_agent_accept，拒绝其他账号的迟到响应，记录对话并最多保留 20 条消息。
+            // 智能助手：确认这个回复属于当前账号（防止切换账号后旧请求的回复才到），再记进对话历史
             if(j->kind==JOB_AGENT && j->agentResult && !strcmp(client.session.uid,agent.owner))lab_agent_accept(&agent,j->client.session.uid,j->note,j->agentResult);
-            //【讲解 L992】检查本行条件，满足后执行紧随其后的语句或代码块。
+            // 数据重新加载成功：释放旧数据，换上新数据。model = j->model 只复制了 5 个指针（浅拷贝），
+            // 所以紧接着把 Job 里的指针清零，表示所有权已转给全局 model；否则后面释放 Job 时会把同一份数据再释放一次
             if (j->loaded) {
-                //【讲解 L993】调用 lab_model_free，释放模型持有的五组 JSON，然后清零结构体。
                 lab_model_free(&model);
-                //【讲解 L994】声明或更新 model（当前数据模型）；按本行表达式保存对应状态。
                 model = j->model;
-                //【讲解 L995】初始化或清空指定内存。
                 memset(&j->model, 0, sizeof(j->model));
-                //【讲解 L996】声明或更新 logged（登录标记）；按本行表达式保存对应状态。
                 logged = 1;
-                //【讲解 L997】检查本行条件，满足后执行紧随其后的语句或代码块。
+                // 刚登录或注册：回到预约页并清空设备选择
                 if (j->kind == JOB_LOGIN || j->kind == JOB_REGISTER) {
-                    //【讲解 L998】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
                     page = 0;
-                    //【讲解 L999】执行 TabCtrl_SetCurSel，参数沿用本行给出的对象、标志和容量。
                     TabCtrl_SetCurSel(tabs, 0);
-                    //【讲解 L1000】初始化或清空指定内存。
                     memset(selected, 0, sizeof(selected));
-                //【讲解 L1001】结束当前代码块。
                 }
-                //【讲解 L1002】更新控件文字。
+                // 清空密码框和邀请码框
                 SetWindowTextW(password, L"");
-                //【讲解 L1003】更新控件文字。
                 SetWindowTextW(inviteEdit, L"");
-                //【讲解 L1004】调用 render，按页面、账号、日期和设备状态更新控件内容。
                 render();
-            //【讲解 L1005】结束当前代码块。
             }
-            //【讲解 L1006】检查本行条件，满足后执行紧随其后的语句或代码块。
+            // 令牌没了（登录失败、账号被停用、刷新令牌失效）：退回未登录状态
             if (!*client.session.access) {
-                //【讲解 L1007】声明或更新 logged（登录标记）；按本行表达式保存对应状态。
                 logged = 0;
-                //【讲解 L1008】调用 lab_model_free，释放模型持有的五组 JSON，然后清零结构体；调用 lab_agent_clear，释放助手历史及最近响应并清空状态。
                 lab_model_free(&model);lab_agent_clear(&agent);
-            //【讲解 L1009】结束当前代码块。
             }
-            //【讲解 L1010】检查本行条件，满足后执行紧随其后的语句或代码块；调用 lab_agent_transcript，把内存中的对话拼成有容量限制的中文显示文本；调用 set_utf8，转换后设置 Windows 控件文字，并释放临时宽字符串。
+            // 显示结果：助手回复显示在对话框里；统计报表用报表窗口；其他有提示的弹窗；
+            // 成功但没有提示的给一句通用成功提示（刷新和登录不打扰用户）
             if(*j->message&&j->kind==JOB_AGENT&&page==4&&j->agentResult){char transcript[16384];lab_agent_transcript(&agent,transcript,sizeof(transcript));set_utf8(agentReply,transcript);}
-            //【讲解 L1011】上一条件不成立时检查下一条件；调用 native_report，显示可滚动的原生文字报表窗口。
             else if(j->kind==JOB_METRICS&&j->ok)native_report("实验室使用情况",j->message);
-            //【讲解 L1012】上一条件不成立时检查下一条件。
             else if (*j->message)
-                //【讲解 L1013】调用 tell，显示平台消息提示。
                 tell(j->message, j->ok ? MB_ICONINFORMATION : MB_ICONERROR);
-            //【讲解 L1014】上一条件不成立时检查下一条件。
             else if (j->ok && j->kind != JOB_REFRESH && j->kind != JOB_LOGIN)
-                //【讲解 L1015】调用 tell，显示平台消息提示。
                 tell("操作成功，已刷新云端数据。", MB_ICONINFORMATION);
-            //【讲解 L1016】更新控件文字。
+            // 底部状态栏
             SetWindowTextW(statusText, j->loaded ? L"已同步云端数据 · 预约时段为北京时间 · 每 30 秒自动刷新"
-                                                 //【讲解 L1017】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                                                  : L"请求未完成，请查看提示并刷新核实。请勿反复提交。");
-        //【讲解 L1018】结束当前代码块。
         }
-        //【讲解 L1019】调用 lab_model_free，释放模型持有的五组 JSON，然后清零结构体。
+        // 释放 Job：剩下的数据、令牌副本（安全擦除）、JSON，最后 free Job 本身
         lab_model_free(&j->model);
-        //【讲解 L1020】调用 lab_session_clear，用 volatile 字节写入清空会话，降低清理被优化器省略的风险。
         lab_session_clear(&j->client.session);
-        //【讲解 L1021】释放 JSON 对象及其子节点。
         cJSON_Delete(j->row);cJSON_Delete(j->agentRequest);cJSON_Delete(j->agentResult);
-        //【讲解 L1022】释放堆内存。
         free(j);
-        //【讲解 L1023】调用 layout，按窗口、页面和滚动状态排列控件。
+        // 按新状态重新布局
         layout();
-        //【讲解 L1024】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L1025】结束当前代码块。
     }
-    //【讲解 L1026】处理 WM_TIMER 对应的事件或任务。
+    // 【WM_TIMER】定时器 2：预览截图，成功就关窗退出；定时器 1：每 30 秒，若已登录且空闲就自动刷新
     case WM_TIMER:
-        //【讲解 L1027】检查本行条件，满足后执行紧随其后的语句或代码块；调用 preview_capture，导出示例页面截图。
         if(wp==2){KillTimer(h,2);if(!preview_capture(h))PostQuitMessage(2);else DestroyWindow(h);return 0;}
-        //【讲解 L1028】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (logged && !busy)
-            //【讲解 L1029】调用 command，把按钮编号映射成具体操作。
             command(ID_REFRESH);
-        //【讲解 L1030】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L1031】处理 WM_DRAWITEM 对应的事件或任务。
+    // 【WM_DRAWITEM】自绘按钮：设备按钮按状态上色，其他按钮画成圆角样式
     case WM_DRAWITEM: {
-        //【讲解 L1032】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         DRAWITEMSTRUCT *d = (DRAWITEMSTRUCT *)lp;
-        //【讲解 L1033】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+        // 算出是第几台设备；不在 0~39 就是普通按钮
         int i = (int)d->CtlID - ID_FIRST_DEVICE;
-        //【讲解 L1034】检查本行条件，满足后执行紧随其后的语句或代码块。
         if(i<0||i>=40){
-            //【讲解 L1035】声明或更新 page（当前页面编号）；按本行表达式保存对应状态。
+            // nav 是否侧栏导航；primary 是否主要按钮（确认预约、登录、发送，紫底白字）；active 是否当前所在页面的导航
             int id=(int)d->CtlID,nav=id>=600&&id<=604,primary=id==ID_BOOK||id==ID_LOGIN||id==ID_AGENT,active=nav&&page==id-600;
-            //【讲解 L1036】执行 RGB，参数沿用本行给出的对象、标志和容量。
             COLORREF bg=primary?ACCENT:active?RGB(242,242,239):RGB(255,255,255);
-            //【讲解 L1037】创建纯色画刷；选择 GDI 绘图对象。
+            // 画圆角背景，用完立即恢复并删除画刷、画笔
             HBRUSH brush=CreateSolidBrush(bg);HPEN pen=CreatePen(PS_SOLID,1,nav?bg:BORDER);HGDIOBJ oldb=SelectObject(d->hDC,brush),oldp=SelectObject(d->hDC,pen);
-            //【讲解 L1038】选择 GDI 绘图对象；释放 GDI 绘图资源。
             RoundRect(d->hDC,d->rcItem.left,d->rcItem.top,d->rcItem.right,d->rcItem.bottom,16,16);SelectObject(d->hDC,oldb);SelectObject(d->hDC,oldp);DeleteObject(brush);DeleteObject(pen);
-            //【讲解 L1039】设置文字背景模式；设置绘图文字颜色；选择 GDI 绘图对象。
+            // 写按钮文字（导航左对齐，其他居中）；当前页的导航左边画一条紫色竖线；有键盘焦点时画虚线框
             RECT rect=d->rcItem;if(nav)rect.left+=14;SetBkMode(d->hDC,TRANSPARENT);SetTextColor(d->hDC,primary?RGB(255,255,255):INK);SelectObject(d->hDC,active?bold:font);wchar_t label[128];GetWindowTextW(d->hwndItem,label,128);DrawTextW(d->hDC,label,-1,&rect,(nav?DT_LEFT:DT_CENTER)|DT_VCENTER|DT_SINGLELINE);if(active){RECT line={d->rcItem.left,d->rcItem.top+9,d->rcItem.left+3,d->rcItem.bottom-9};HBRUSH a=CreateSolidBrush(ACCENT);FillRect(d->hDC,&line,a);DeleteObject(a);}if(d->itemState&ODS_FOCUS)DrawFocusRect(d->hDC,&rect);return TRUE;
-        //【讲解 L1040】结束当前代码块。
         }
-        //【讲解 L1041】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+        // 设备按钮：判断这台设备的三种状态
         int occupied = 0, fault = 0, live = 0;
-        //【讲解 L1042】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
         const cJSON *r;
-        //【讲解 L1043】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
         char date[16];
-        //【讲解 L1044】调用 date_string，将日期控件的年月日格式化为 YYYY-MM-DD。
         date_string(date);
-        //【讲解 L1045】同步读写控件状态。
         int start = 8 + (int)SendMessageW(startEdit, CB_GETCURSEL, 0, 0),
-            //【讲解 L1046】同步读写控件状态。
             end = 9 + (int)SendMessageW(endEdit, CB_GETCURSEL, 0, 0);
-        //【讲解 L1047】遍历 JSON 数组；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
+        // 故障：设备表里的状态不是 available
         cJSON_ArrayForEach(r, model.devices) if (lab_int(r, "number") == i + 1 &&
-                                                 //【讲解 L1048】比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                                                  strcmp(lab_str(r, "status"), "available")) fault = 1;
-        //【讲解 L1049】遍历 JSON 数组；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
+        // 已预约：所选日期、所选时段内有有效预约
         cJSON_ArrayForEach(r, model.bookings) if (lab_int(r, "device_number") == i + 1 &&
-                                                  //【讲解 L1050】比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                                                   !strcmp(lab_str(r, "reservation_date"), date) &&
-                                                  //【讲解 L1051】调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
                                                   lab_int(r, "start_hour") >= start &&
-                                                  //【讲解 L1052】调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围。
                                                   lab_int(r, "start_hour") < end &&
-                                                  //【讲解 L1053】比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                                                   (!strcmp(lab_str(r, "status"), "reserved") ||
-                                                   //【讲解 L1054】比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                                                    !strcmp(lab_str(r, "status"), "confirmed") ||
-                                                   //【讲解 L1055】比较字符串内容；调用 lab_str，安全读取 JSON 字符串：缺失或类型不匹配时返回空字符串，返回的是 JSON 内部借用指针。
                                                    !strcmp(lab_str(r, "status"), "in_use"))) occupied = 1;
-        //【讲解 L1056】遍历 JSON 数组；调用 lab_int，读取 JSON 整数，先检查数值类型和 int 范围；调用 lab_booking_is_live，只有状态为 in_use 且当前时间在该小时内才显示正在使用，避免历史状态误亮。
+        // 使用中：此刻正有人签到使用
         cJSON_ArrayForEach(r,model.bookings)if(lab_int(r,"device_number")==i+1&&lab_booking_is_live(r,now_ms()))live=1;
-        //【讲解 L1057】声明或更新 selected（设备选择状态）；按本行表达式保存对应状态。
+        // 颜色优先级：已选择 > 故障 > 使用中 > 已预约 > 空闲
         COLORREF color = selected[i] ? RGB(239,240,255)
-                         //【讲解 L1058】执行 RGB，参数沿用本行给出的对象、标志和容量。
                          : fault     ? RGB(252,240,239)
-                         //【讲解 L1059】执行 RGB，参数沿用本行给出的对象、标志和容量。
                          : live      ? RGB(232,246,250)
-                         //【讲解 L1060】执行 RGB，参数沿用本行给出的对象、标志和容量。
                          : occupied  ? RGB(242,242,239)
-                                     //【讲解 L1061】执行 RGB，参数沿用本行给出的对象、标志和容量。
                                      : RGB(252,252,251);
-        //【讲解 L1062】创建纯色画刷。
+        // 画圆角底色，选中时边框加粗变紫；画完删除 GDI 对象
         HBRUSH brush = CreateSolidBrush(color);
-        //【讲解 L1063】声明或更新 selected（设备选择状态）；按本行表达式保存对应状态。
         HPEN pen=CreatePen(PS_SOLID,selected[i]?2:1,selected[i]?ACCENT:fault?RGB(233,194,191):BORDER);
-        //【讲解 L1064】选择 GDI 绘图对象；释放 GDI 绘图资源。
         HGDIOBJ ob=SelectObject(d->hDC,brush),op=SelectObject(d->hDC,pen);RoundRect(d->hDC,d->rcItem.left,d->rcItem.top,d->rcItem.right,d->rcItem.bottom,16,16);SelectObject(d->hDC,ob);SelectObject(d->hDC,op);DeleteObject(pen);
-        //【讲解 L1065】释放 GDI 绘图资源。
         DeleteObject(brush);
-        //【讲解 L1066】设置文字背景模式。
+        // 两行文字：设备编号 + 状态
         SetBkMode(d->hDC, TRANSPARENT);
-        //【讲解 L1067】设置绘图文字颜色。
         SetTextColor(d->hDC, fault ? RGB(189,82,82) : INK);
-        //【讲解 L1068】选择 GDI 绘图对象。
         SelectObject(d->hDC, bold);
-        //【讲解 L1069】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
         wchar_t b[40];
-        //【讲解 L1070】格式化宽字符文本。
         swprintf(b, 40, L"%02d\n%ls", i + 1, fault ? L"! 故障" : live ? L"使用中" : occupied ? L"已预约" : L"* 空闲");
-        //【讲解 L1071】执行 DrawTextW，参数沿用本行给出的对象、标志和容量。
         RECT seatText=d->rcItem;seatText.top+=10;DrawTextW(d->hDC, b, -1, &seatText, DT_CENTER | DT_WORDBREAK);
-        //【讲解 L1072】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (d->itemState & ODS_FOCUS)
-            //【讲解 L1073】执行 DrawFocusRect，参数沿用本行给出的对象、标志和容量。
             DrawFocusRect(d->hDC, &d->rcItem);
-        //【讲解 L1074】结束当前函数并返回 TRUE；具体成功或失败含义见函数说明。
         return TRUE;
-    //【讲解 L1075】结束当前代码块。
     }
-    //【讲解 L1076】处理 WM_CTLCOLOREDIT 对应的事件或任务。
+    // 【WM_CTLCOLOREDIT / WM_CTLCOLORSTATIC】系统画输入框、文字标签前会问我们要颜色：
+    // 输入框白底；帮助文字和状态栏用背景灰，其他标签用白色
     case WM_CTLCOLOREDIT:
-        //【讲解 L1077】设置绘图文字颜色。
         SetBkColor((HDC)wp,RGB(255,255,255));SetTextColor((HDC)wp,INK);return (LRESULT)GetStockObject(WHITE_BRUSH);
-    //【讲解 L1078】处理 WM_CTLCOLORSTATIC 对应的事件或任务。
     case WM_CTLCOLORSTATIC:
-        //【讲解 L1079】设置文字背景模式。
         SetBkMode((HDC)wp,TRANSPARENT);
-        //【讲解 L1080】执行 SetBkColor，参数沿用本行给出的对象、标志和容量。
         SetBkColor((HDC)wp, BG);
-        //【讲解 L1081】设置绘图文字颜色。
         SetTextColor((HDC)wp, INK);
-        //【讲解 L1082】结束当前函数并返回 (LRESULT)((HWND)lp==helpText||(HWND)lp==statusText?background:GetStockObject(WHITE_BRUSH))；具体成功或失败含义见函数说明。
         return (LRESULT)((HWND)lp==helpText||(HWND)lp==statusText?background:GetStockObject(WHITE_BRUSH));
-    //【讲解 L1083】处理 WM_ERASEBKGND 对应的事件或任务。
+    // 【WM_ERASEBKGND】擦背景时用自己的背景色；返回 1 表示已处理，避免系统先刷白再重画造成闪烁
     case WM_ERASEBKGND: {
-        //【讲解 L1084】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
         RECT r;
-        //【讲解 L1085】读取窗口可用绘制区域。
         GetClientRect(h, &r);
-        //【讲解 L1086】声明或更新 background（背景画刷）；按本行表达式保存对应状态。
         FillRect((HDC)wp, &r, background);
-        //【讲解 L1087】结束当前函数并返回 1；具体成功或失败含义见函数说明。
         return 1;
-    //【讲解 L1088】结束当前代码块。
     }
-    //【讲解 L1089】处理 WM_DESTROY 对应的事件或任务。
+    // 【WM_DESTROY】窗口关闭：停定时器，释放数据，擦除令牌，结束消息循环
     case WM_DESTROY:
-        //【讲解 L1090】执行 KillTimer，参数沿用本行给出的对象、标志和容量。
         KillTimer(h, 1);
-        //【讲解 L1091】调用 lab_model_free，释放模型持有的五组 JSON，然后清零结构体。
         lab_model_free(&model);
-        //【讲解 L1092】调用 lab_session_clear，用 volatile 字节写入清空会话，降低清理被优化器省略的风险。
         lab_session_clear(&client.session);
-        //【讲解 L1093】执行 PostQuitMessage，参数沿用本行给出的对象、标志和容量。
         PostQuitMessage(0);
-        //【讲解 L1094】结束当前函数并返回 0；具体成功或失败含义见函数说明。
         return 0;
-    //【讲解 L1095】结束当前代码块。
     }
-    //【讲解 L1096】交给 Windows 默认消息处理。
     return DefWindowProcW(h, msg, wp, lp);
-//【讲解 L1097】结束当前代码块。
 }
-//【讲解 L1098】函数 wWinMain：Windows 程序入口：初始化公共控件及主窗口，处理预览参数，进入消息循环。
+
+/* ===================== 模块 15：程序入口 wWinMain =====================
+ * 功能：程序从这里开始：读命令行参数 → 初始化 → 注册并创建主窗口 → 进入消息循环 → 退出时释放资源。
+ * 写法：Windows 图形程序的入口是 wWinMain 而不是 main；开头的 w 表示命令行参数是宽字符。
+ */
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR commandLine, int show) {
-    //【讲解 L1099】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
+    // 没用到的参数，强转 void 避免编译器警告
     (void)previous;
-    //【讲解 L1100】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 解析预览参数：--preview=login/booking/profile/agent 选择预览哪个页面
     if(wcsstr(commandLine,L"--preview=login"))preview=1;
-    //【讲解 L1101】上一条件不成立时检查下一条件。
     else if(wcsstr(commandLine,L"--preview=booking"))preview=2;
-    //【讲解 L1102】上一条件不成立时检查下一条件。
     else if(wcsstr(commandLine,L"--preview=profile"))preview=3;
-    //【讲解 L1103】上一条件不成立时检查下一条件。
     else if(wcsstr(commandLine,L"--preview=agent"))preview=4;
-    //【讲解 L1104】声明或更新 preview（离线预览标记）；按本行表达式保存对应状态。
+    // --preview-output= 后面是截图保存路径（17 是这个前缀的长度）
     LPWSTR output=wcsstr(commandLine,L"--preview-output=");if(preview&&output){output+=17;wcsncpy(previewOutput,output,MAX_PATH-1);}
-    //【讲解 L1105】执行 ，参数沿用本行给出的对象、标志和容量。
+    // 初始化通用控件库（列表、日期框、标签页），否则这些控件创建不出来
     INITCOMMONCONTROLSEX ic = {sizeof(ic), ICC_LISTVIEW_CLASSES | ICC_DATE_CLASSES | ICC_TAB_CLASSES};
-    //【讲解 L1106】执行 InitCommonControlsEx，参数沿用本行给出的对象、标志和容量。
     InitCommonControlsEx(&ic);
-    //【讲解 L1107】执行 CoInitializeEx，参数沿用本行给出的对象、标志和容量。
+    // 初始化 COM，生成 GUID 要用
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-    //【讲解 L1108】声明或更新 transport（HTTP 传输回调）；按本行表达式保存对应状态。
+    // 把 Windows 联网函数装进业务层客户端：client.c 之后通过这个函数指针发请求，自己不依赖 Windows
     client.transport = lab_win_http;
-    //【讲解 L1109】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    // 注册主窗口类：指定消息处理函数 wndproc、图标、鼠标指针
     WNDCLASSEXW wc = {0};
-    //【讲解 L1110】执行 ，参数沿用本行给出的对象、标志和容量。
     wc.cbSize = sizeof(wc);
-    //【讲解 L1111】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     wc.lpfnWndProc = wndproc;
-    //【讲解 L1112】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     wc.hInstance = instance;
-    //【讲解 L1113】执行 LoadIconW、MAKEINTRESOURCEW，参数沿用本行给出的对象、标志和容量。
     wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1));
-    //【讲解 L1114】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     wc.hIconSm = wc.hIcon;
-    //【讲解 L1115】执行 LoadCursorW，参数沿用本行给出的对象、标志和容量。
     wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
-    //【讲解 L1116】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
     wc.lpszClassName = L"NJUPTNativeCLabReservation";
-    //【讲解 L1117】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!RegisterClassExW(&wc))
-        //【讲解 L1118】结束当前函数并返回 1；具体成功或失败含义见函数说明。
         return 1;
-    //【讲解 L1119】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+    // 创建 1280×940 的主窗口（带垂直滚动条）；创建过程中会先收到 WM_CREATE
     HWND h = CreateWindowExW(0, wc.lpszClassName, L"实验室预约 · 原生 C", WS_OVERLAPPEDWINDOW|WS_VSCROLL, CW_USEDEFAULT,
-                             //【讲解 L1120】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                              CW_USEDEFAULT, 1280, 940, NULL, NULL, instance, NULL);
-    //【讲解 L1121】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!h)
-        //【讲解 L1122】结束当前函数并返回 1；具体成功或失败含义见函数说明。
         return 1;
-    //【讲解 L1123】设置窗口或控件显示状态。
     ShowWindow(h, show);
-    //【讲解 L1124】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 预览且需要截图：2.5 秒后触发截图定时器（留时间让界面画完）
     if(preview&&*previewOutput)SetTimer(h,2,2500,NULL);
-    //【讲解 L1125】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
+    // 消息循环：GetMessageW 等待下一条消息，收到退出消息时返回 0，循环结束。IsDialogMessageW 让 Tab 键能在控件间切换
     MSG msg;
-    //【讲解 L1126】条件成立时继续循环；等待下一个窗口消息。
     while (GetMessageW(&msg, NULL, 0, 0) > 0) {
-        //【讲解 L1127】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (!IsDialogMessageW(h, &msg)) {
-            //【讲解 L1128】转换键盘消息。
             TranslateMessage(&msg);
-            //【讲解 L1129】派发消息给窗口过程。
             DispatchMessageW(&msg);
-        //【讲解 L1130】结束当前代码块。
         }
-    //【讲解 L1131】结束当前代码块。
     }
-    //【讲解 L1132】释放 GDI 绘图资源。
+    // 退出前释放字体、画刷和 COM
     DeleteObject(font);
-    //【讲解 L1133】释放 GDI 绘图资源。
     DeleteObject(bold);
-    //【讲解 L1134】释放 GDI 绘图资源。
     DeleteObject(headingFont);DeleteObject(heroFont);
-    //【讲解 L1135】释放 GDI 绘图资源。
     DeleteObject(background);
-    //【讲解 L1136】执行 CoUninitialize，参数沿用本行给出的对象、标志和容量。
     CoUninitialize();
-    //【讲解 L1137】结束当前函数并返回 (int)msg.wParam；具体成功或失败含义见函数说明。
+    // 返回值来自 PostQuitMessage 的参数
     return (int)msg.wParam;
-//【讲解 L1138】结束当前代码块。
 }

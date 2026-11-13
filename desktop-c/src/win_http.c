@@ -1,239 +1,202 @@
-//【答辩注释】WinHTTP HTTPS 适配器：UTF-8 转宽字符、设置请求头、禁止自动重定向、分块读取响应并统一清理句柄。最大响应体为 16 MiB。
-//【讲解 L1】按 UNICODE 是否已定义选择编译分支，避免重复定义或适配平台。
-#ifndef UNICODE
-//【讲解 L2】定义 UNICODE，用于编译配置或头文件保护。
-#define UNICODE
-//【讲解 L3】结束当前条件编译区域。
+/*
+ * win_http.c —— Windows 版"网络发送器"
+ *
+ * 功能：业务层说"把这段 JSON 发到某个地址"，这个文件负责真正把它通过 HTTPS 发出去，
+ *       再把服务器的回复原样带回来。它不懂预约、登录这些业务，只管收发。
+ *
+ * 一次请求的完整过程（对应下面的模块 3～7）：
+ *   准备参数 → 打开网络会话 → 连接服务器 → 创建请求 → 拼请求头 → 发送 →
+ *   读状态码 → 分块读回复 → 清理所有资源 → 把回复交给业务层
+ *
+ * 用到的是 Windows 自带的 WinHTTP 库，不需要安装第三方网络库。
+ */
+
+/* ===================== 模块 1：编译配置与头文件 =====================
+ * 功能：让 Windows API 使用"宽字符"（UTF-16）版本，并引入需要的库。
+ */
+#ifndef UNICODE        // 如果编译命令里没有定义 UNICODE
+#define UNICODE        // 就在这里定义，让 Windows 头文件选用 W 结尾的宽字符函数
 #endif
-//【讲解 L4】按 _UNICODE 是否已定义选择编译分支，避免重复定义或适配平台。
-#ifndef _UNICODE
-//【讲解 L5】定义 _UNICODE，用于编译配置或头文件保护。
+#ifndef _UNICODE       // C 运行库用的同类开关，和上面保持一致
 #define _UNICODE
-//【讲解 L6】结束当前条件编译区域。
 #endif
-//【讲解 L7】引入 windows.h 的类型和函数声明。
-#include <windows.h>
-//【讲解 L8】引入 win_http.h 的类型和函数声明。
-#include "win_http.h"
-//【讲解 L9】引入 stdio.h 的类型和函数声明。
-#include <stdio.h>
-//【讲解 L10】引入 stdlib.h 的类型和函数声明。
-#include <stdlib.h>
-//【讲解 L11】引入 string.h 的类型和函数声明。
-#include <string.h>
-//【讲解 L12】引入 winhttp.h 的类型和函数声明。
-#include <winhttp.h>
-//【讲解 L13】函数 wide：把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
+#include <windows.h>   // Windows 基础类型和函数，例如 MultiByteToWideChar、GetLastError
+#include "win_http.h"  // 本文件要实现的函数声明
+#include <stdio.h>     // snprintf：拼请求头、写错误信息
+#include <stdlib.h>    // calloc / realloc / free：申请和释放内存
+#include <string.h>    // strlen：计算字符串长度
+#include <winhttp.h>   // WinHTTP 网络库：WinHttpOpen、WinHttpSendRequest 等
+
+/* ===================== 模块 2：文字编码转换 =====================
+ * 功能：业务层的文字都是 UTF-8（char），WinHTTP 只接受 UTF-16（wchar_t），发请求前要转换。
+ * 返回新申请的内存，调用者负责 free；转换失败返回 NULL。
+ */
 static wchar_t *wide(const char *s) {
-    //【讲解 L14】把 UTF-8 转为 Windows 宽字符。
+    // 步骤 1：第一次调用只"问"需要多少个宽字符（最后一个参数传 0）。
+    //         MB_ERR_INVALID_CHARS：遇到不合法的 UTF-8 直接失败，返回 0
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0);
-    //【讲解 L15】申请并清零堆内存。
+    // 步骤 2：按需要的长度申请内存；calloc 会把内存清零。n 为 0 说明转换失败，不申请
     wchar_t *p = n ? calloc((size_t)n, sizeof(wchar_t)) : NULL;
-    //【讲解 L16】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 步骤 3：申请成功后，第二次调用才真正转换，结果写进 p
     if (p)
-        //【讲解 L17】把 UTF-8 转为 Windows 宽字符。
         MultiByteToWideChar(CP_UTF8, 0, s, -1, p, n);
-    //【讲解 L18】结束当前函数并返回 p；具体成功或失败含义见函数说明。
     return p;
-//【讲解 L19】结束当前代码块。
 }
-//【讲解 L20】函数 lab_win_http：Windows 传输回调；负责 HTTPS、状态码、响应缓冲及资源清理，返回堆内存给共享层。
+
+/* ===================== 模块 3：准备阶段 =====================
+ * 功能：lab_win_http 是对外唯一的函数。这一段先声明所有要用的资源并全部设为空，
+ *       再把地址、方法、路径转成宽字符。
+ * 为什么一开始全设成 NULL：函数中途任何一步失败都会跳到末尾统一清理，
+ *       清理代码靠"是不是 NULL"判断哪些资源已经申请过、需要释放。
+ */
 char *lab_win_http(void *ctx, const char *host, const char *method, const char *path, const char *key,
-                   //【讲解 L21】声明或更新 error（错误文本）、status（状态码或业务状态）；按本行表达式保存对应状态。
                    const char *token, const char *body, int *status, char *error, size_t cap) {
-    //【讲解 L22】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
-    HINTERNET session = NULL, connection = NULL, request = NULL;
-    //【讲解 L23】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
-    wchar_t *h = NULL, *m = NULL, *p = NULL, *headers = NULL;
-    //【讲解 L24】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
-    char *result = NULL;
-    //【讲解 L25】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
-    size_t used = 0;
-    //【讲解 L26】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
+    HINTERNET session = NULL, connection = NULL, request = NULL; // 三层网络句柄：会话 → 连接 → 请求
+    wchar_t *h = NULL, *m = NULL, *p = NULL, *headers = NULL;    // 转成宽字符后的地址、方法、路径、请求头
+    char *result = NULL;      // 服务器回复的内容，最后返回给业务层
+    size_t used = 0;          // result 里已经存了多少字节
+    // n：本次可读字节数；got：实际读到字节数；code：HTTP 状态码；redirect：禁止自动跳转的选项值
     DWORD n, got, code = 0, codeSize = sizeof(code), redirect = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-    //【讲解 L27】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
-    char *utf8 = NULL;
-    //【讲解 L28】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
-    (void)ctx;
-    *status = 0;
-    //【讲解 L30】声明或更新 error（错误文本）；按本行表达式保存对应状态。
-    error[0] = 0;
-    //【讲解 L31】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
-    h = wide(host);
-    //【讲解 L32】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
-    m = wide(method);
-    //【讲解 L33】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
-    p = wide(path);
-    //【讲解 L34】检查本行条件，满足后执行紧随其后的语句或代码块。
-    if (!h || !m || !p)
-        //【讲解 L35】转到 fail 统一处理，避免遗漏资源清理。
-        goto fail;
-    //【讲解 L36】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
+    char *utf8 = NULL;        // 先用 UTF-8 拼好的请求头，之后再转宽字符
+    (void)ctx;                // Windows 版用不到上下文参数；这样写是告诉编译器"故意不用"，避免警告
+    *status = 0;              // 先清空输出参数，失败时调用方看到的是 0 而不是上次的旧值
+    error[0] = 0;             // 错误信息先设为空字符串
+    h = wide(host);           // 服务器地址转宽字符
+    m = wide(method);         // "GET" / "POST" 转宽字符
+    p = wide(path);           // 请求路径转宽字符
+    if (!h || !m || !p)       // 任何一个转换失败（内存不足或编码不合法）
+        goto fail;            // 跳到统一失败出口
+
+    /* ===================== 模块 4：建立 HTTPS 连接 =====================
+     * 功能：按 WinHTTP 的固定三步打开网络通道：会话 → 连接服务器 → 创建一个请求。
+     */
+    // 步骤 1：打开会话。第一个参数是程序的"名片"（User-Agent），两个相邻字符串会被编译器自动拼成一个；
+    //         AUTOMATIC_PROXY：自动使用系统代理设置，校园网有代理时也能连上
     session =
-        //【讲解 L37】执行 WinHttpOpen，参数沿用本行给出的对象、标志和容量。
         WinHttpOpen(L"LabReservationNativeC/"
-                    //【讲解 L38】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
                     L"3.0.0",
-                    //【讲解 L39】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    //【讲解 L40】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!session)
-        //【讲解 L41】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    //【讲解 L42】执行 WinHttpSetTimeouts，参数沿用本行给出的对象、标志和容量。
+    // 步骤 2：设置超时（毫秒）：域名解析 10 秒、连接 10 秒、发送 15 秒、接收 20 秒。
+    //         网络断开时不会一直卡住，到时间就报错
     WinHttpSetTimeouts(session, 10000, 10000, 15000, 20000);
-    //【讲解 L43】执行 WinHttpConnect，参数沿用本行给出的对象、标志和容量。
+    // 步骤 3：连接服务器的 443 端口（HTTPS 默认端口）
     connection = WinHttpConnect(session, h, INTERNET_DEFAULT_HTTPS_PORT, 0);
-    //【讲解 L44】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!connection)
-        //【讲解 L45】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    //【讲解 L46】执行 WinHttpOpenRequest，参数沿用本行给出的对象、标志和容量。
+    // 步骤 4：创建请求。WINHTTP_FLAG_SECURE 表示走加密的 HTTPS，令牌和密码不会被明文截获
     request = WinHttpOpenRequest(connection, m, p, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                 //【讲解 L47】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                                  WINHTTP_FLAG_SECURE);
-    //【讲解 L48】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!request)
-        //【讲解 L49】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    //【讲解 L50】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 步骤 5：禁止自动跳转。如果服务器回复"请去另一个地址"，不跟过去，
+    //         防止带着用户令牌的请求被转发到别的网站
     if (!WinHttpSetOption(request, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect)))
-        //【讲解 L51】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    //【讲解 L52】申请并清零堆内存；计算字符串字节长度。
+
+    /* ===================== 模块 5：拼请求头并发送 =====================
+     * 功能：告诉服务器"我发的是 JSON、我是哪个项目、我是哪个用户"，然后把请求体发出去。
+     */
+    // 步骤 1：按实际长度申请请求头缓冲区。160 字节留给固定文字（Content-Type 等），
+    //         再加上 key 和 token 的长度，保证一定放得下
     utf8 = calloc(strlen(key) + strlen(token) + 160, 1);
-    //【讲解 L53】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!utf8)
-        //【讲解 L54】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    //【讲解 L55】按容量格式化 UTF-8 文本；计算字符串字节长度。
+    // 步骤 2：拼出请求头，每行用 \r\n 结尾（HTTP 协议规定）。
+    //         ? : 的作用：key 或 token 为空字符串时，对应那一行整行不写
     snprintf(utf8, strlen(key) + strlen(token) + 160,
-             //【讲解 L56】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
              "Content-Type: application/json\r\nAccept: application/json\r\n%s%s%s%s%s%s",
-             *key ? "apikey: " : "", key, *key ? "\r\n" : "", *token ? "Authorization: Bearer " : "", token,
+             *key ? "apikey: " : "", key, *key ? "\r\n" : "",                       // 第 3 行：apikey: 项目标识
+             *token ? "Authorization: Bearer " : "", token,                         // 第 4 行：Authorization: Bearer 用户令牌
              *token ? "\r\n" : "");
-    //【讲解 L59】调用 wide，把业务层 UTF-8 转为 Windows UTF-16，分配的字符串由调用方 free。
+    // 步骤 3：请求头转成宽字符，WinHTTP 只接受这种格式
     headers = wide(utf8);
-    //【讲解 L60】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (!headers)
-        //【讲解 L61】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    //【讲解 L62】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 步骤 4：发送请求并等待服务器回复。
+    //         (DWORD)-1 表示请求头以 \0 结尾、让 WinHTTP 自己算长度；
+    //         请求体为空（GET 请求）时传 WINHTTP_NO_REQUEST_DATA
     if (!WinHttpSendRequest(request, headers, (DWORD)-1, *body ? (void *)body : WINHTTP_NO_REQUEST_DATA,
-                            //【讲解 L63】计算字符串字节长度。
                             (DWORD)strlen(body), (DWORD)strlen(body), 0) ||
-        //【讲解 L64】执行 WinHttpReceiveResponse，参数沿用本行给出的对象、标志和容量。
-        !WinHttpReceiveResponse(request, NULL))
-        //【讲解 L65】转到 fail 统一处理，避免遗漏资源清理。
+        !WinHttpReceiveResponse(request, NULL))   // 两步任一失败都算网络失败
         goto fail;
-    //【讲解 L66】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 步骤 5：读出 HTTP 状态码（200 成功、401 令牌过期、404 不存在……），
+    //         QUERY_FLAG_NUMBER 让它直接给数字而不是文字
     if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                             //【讲解 L67】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
                              WINHTTP_HEADER_NAME_BY_INDEX, &code, &codeSize, WINHTTP_NO_HEADER_INDEX))
-        //【讲解 L68】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    *status = (int)code;
-    //【讲解 L70】申请并清零堆内存。
-    result = calloc(1, 1);
-    //【讲解 L71】检查本行条件，满足后执行紧随其后的语句或代码块。
+    *status = (int)code;      // 通过输出参数把状态码交给调用方，由业务层决定怎么处理
+
+    /* ===================== 模块 6：分块读取回复 =====================
+     * 功能：服务器的回复可能很长，而且是分批到达的，所以要循环读，边读边把缓冲区变大。
+     */
+    result = calloc(1, 1);    // 先申请 1 字节并清零，相当于一个空字符串；回复为空时也能正常返回 ""
     if (!result)
-        //【讲解 L72】转到 fail 统一处理，避免遗漏资源清理。
         goto fail;
-    //【讲解 L73】承接相邻行的参数、表达式或初始化项；与前后行共同构成一条完整 C 语句。
     do {
-        //【讲解 L74】声明本行类型的数据或初始化其值；数组方括号给出固定容量，指针按后续分支使用。
         char *next;
-        //【讲解 L75】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         n = 0;
-        //【讲解 L76】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 步骤 1：问 WinHTTP 现在有多少字节可以读
         if (!WinHttpQueryDataAvailable(request, &n))
-            //【讲解 L77】转到 fail 统一处理，避免遗漏资源清理。
             goto fail;
-        //【讲解 L78】检查本行条件，满足后执行紧随其后的语句或代码块。
-        if (!n)
-            //【讲解 L79】结束当前最近的循环或 switch 分支。
+        if (!n)               // 0 字节说明已经读完
             break;
-        //【讲解 L80】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 步骤 2：总量超过 16 MB 就放弃，防止服务器异常时把内存耗尽
         if (used + n > 16 * 1024 * 1024) {
-            //【讲解 L81】执行 SetLastError，参数沿用本行给出的对象、标志和容量。
-            SetLastError(ERROR_FILE_TOO_LARGE);
-            //【讲解 L82】转到 fail 统一处理，避免遗漏资源清理。
+            SetLastError(ERROR_FILE_TOO_LARGE);   // 设置错误码，失败提示里会显示它
             goto fail;
-        //【讲解 L83】结束当前代码块。
         }
-        //【讲解 L84】调整缓冲区容量。
+        // 步骤 3：把缓冲区扩大到"已有 + 新到 + 1"，+1 留给字符串结尾的 \0。
+        //         先存进临时变量 next：如果 realloc 失败返回 NULL，原来的 result 地址还在，
+        //         失败出口仍能 free 它；直接写 result = realloc(...) 会丢掉旧地址造成内存泄漏
         next = realloc(result, used + n + 1);
-        //【讲解 L85】检查本行条件，满足后执行紧随其后的语句或代码块。
         if (!next)
-            //【讲解 L86】转到 fail 统一处理，避免遗漏资源清理。
             goto fail;
-        //【讲解 L87】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
         result = next;
-        //【讲解 L88】检查本行条件，满足后执行紧随其后的语句或代码块。
+        // 步骤 4：把新数据读到缓冲区末尾（result + used 处），got 是实际读到的字节数
         if (!WinHttpReadData(request, result + used, n, &got))
-            //【讲解 L89】转到 fail 统一处理，避免遗漏资源清理。
             goto fail;
-        //【讲解 L90】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
-        used += got;
-        //【讲解 L91】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
-        result[used] = 0;
-        //【讲解 L92】检查本行条件，满足后执行紧随其后的语句或代码块。
-        if (!got)
-            //【讲解 L93】结束当前最近的循环或 switch 分支。
+        used += got;          // 更新已读总量
+        result[used] = 0;     // 末尾补 \0，保证 result 始终是一个合法的 C 字符串
+        if (!got)             // 一个字节都没读到，也说明结束了
             break;
-    //【讲解 L94】结束当前代码块或类型声明。
     } while (n);
-    //【讲解 L95】转到 done 统一处理，避免遗漏资源清理。
-    goto done;
-//【讲解 L96】失败清理入口，生成错误并释放资源。
-fail:
-    //【讲解 L97】按容量格式化 UTF-8 文本。
+    goto done;                // 一切顺利：跳过失败处理，直接去清理
+
+    /* ===================== 模块 7：统一出口（失败处理 + 资源清理） =====================
+     * 功能：不管成功还是失败，最后都从这里离开，保证每一个申请过的资源都被释放。
+     * 为什么用 goto：C 没有 try/finally，也没有析构函数。前面任何一步失败都跳到 fail，
+     *       不用在每个失败点重复写一遍释放代码，也就不容易漏掉。这是 C 项目里很常见的写法。
+     */
+fail:                         // 只有失败时才会进入这里
+    // 写一条用户能看懂的中文错误，附上 Windows 错误码方便排查；
+    // 提醒"先刷新再重试"：请求可能已经到达服务器只是回复超时，盲目重试可能重复操作
     snprintf(error, cap,
-             //【讲解 L98】继续上一行的文本或初始化数据，保留接口字段、提示语及转义字符。
              "网络请求失败（Windows 错误 %lu），请检查网络后刷新；若提交超时，先刷新确认结果，再重试。",
-             //【讲解 L99】执行 GetLastError，参数沿用本行给出的对象、标志和容量。
              (unsigned long)GetLastError());
-    //【讲解 L100】释放堆内存。
-    free(result);
-    //【讲解 L101】按右侧表达式更新本行左侧变量或成员，供后续步骤继续使用。
-    result = NULL;
-//【讲解 L102】统一退出入口，释放网络句柄和临时缓冲区。
-done:
-    //【讲解 L103】检查本行条件，满足后执行紧随其后的语句或代码块。
+    free(result);             // 读了一半的回复不能用，释放掉（free(NULL) 是安全的）
+    result = NULL;            // 返回 NULL 告诉调用方"失败了"
+done:                         // 成功和失败都会经过这里
     if (headers) {
-        //【讲解 L104】清除敏感临时数据。
+        // 请求头里含有用户令牌：释放前先用 SecureZeroMemory 清零。
+        // 普通 memset 可能被编译器当作"写了没人读"而优化掉，SecureZeroMemory 保证一定执行
         SecureZeroMemory(headers, wcslen(headers) * sizeof(wchar_t));
-        //【讲解 L105】释放堆内存。
         free(headers);
-    //【讲解 L106】结束当前代码块。
     }
-    //【讲解 L107】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (utf8) {
-        //【讲解 L108】清除敏感临时数据；计算字符串字节长度。
-        SecureZeroMemory(utf8, strlen(utf8));
-        //【讲解 L109】释放堆内存。
+        SecureZeroMemory(utf8, strlen(utf8));   // UTF-8 版本的请求头同样含令牌，同样清零
         free(utf8);
-    //【讲解 L110】结束当前代码块。
     }
-    //【讲解 L111】释放堆内存。
-    free(h);
-    //【讲解 L112】释放堆内存。
+    free(h);                  // 释放三个转换出来的宽字符串
     free(m);
-    //【讲解 L113】释放堆内存。
     free(p);
-    //【讲解 L114】检查本行条件，满足后执行紧随其后的语句或代码块。
+    // 按"后打开先关闭"的顺序关闭网络句柄：请求 → 连接 → 会话
     if (request)
-        //【讲解 L115】执行 WinHttpCloseHandle，参数沿用本行给出的对象、标志和容量。
         WinHttpCloseHandle(request);
-    //【讲解 L116】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (connection)
-        //【讲解 L117】执行 WinHttpCloseHandle，参数沿用本行给出的对象、标志和容量。
         WinHttpCloseHandle(connection);
-    //【讲解 L118】检查本行条件，满足后执行紧随其后的语句或代码块。
     if (session)
-        //【讲解 L119】执行 WinHttpCloseHandle，参数沿用本行给出的对象、标志和容量。
         WinHttpCloseHandle(session);
-    //【讲解 L120】结束当前函数并返回 result；具体成功或失败含义见函数说明。
-    return result;
-//【讲解 L121】结束当前代码块。
+    return result;            // 成功：回复内容（调用者负责 free）；失败：NULL
 }
