@@ -4,10 +4,25 @@
 
 ## 源码结构
 
-- `src/main.c`：Win32 界面、页面交互与异步任务调度；
-- `src/client.c`、`src/client.h`：认证、预约、签到、故障、统计与智能助手的 API 客户端；
-- `src/win_http.c`：基于 WinHTTP 的 HTTPS 请求实现；
-- `src/ui_theme.h`：桌面界面主题；
+按答辩分工组织：`src/` 下的三个编号文件是要讲解的核心逻辑，每个文件开头都有讲解提纲和可能被问到的问题；其余代码都放在 `src/other/`。
+
+| 文件 | 讲解人 | 内容 |
+|---|---|---|
+| `src/1_cloud_data.c` | 第 1 人 | 和云端通信、令牌续期、分页加载数据、登录 |
+| `src/2_booking.c` | 第 2 人 | 提交预约、北京时间换算、签到签退规则 |
+| `src/3_ai_agent.c` | 第 3 人 | AI 智能助手：打包请求、对话状态、两步确认 |
+| `src/client.h` | 共用 | 三个模块的声明，按讲解人分段 |
+
+`src/other/`（答辩不讲）：
+
+- `main.c`：Win32 界面、页面交互与异步任务调度（与三个模块相关的位置标有【答辩·第N人】）；
+- `win_http.c`、`win_http.h`：基于 WinHTTP 的 HTTPS 请求实现；
+- `client_common.c`：读取 JSON、复制字符串、清空内存等基础工具；
+- `client_extras.c`：版本比较、管理员统计、导出 CSV、报表排版；
+- `ui_theme.h`：桌面界面主题；
+
+其他：
+
 - `vendor/cJSON.*`：JSON 解析库；
 - `tests/client_test.c`：无真实账号依赖的客户端协议与边界测试。
 

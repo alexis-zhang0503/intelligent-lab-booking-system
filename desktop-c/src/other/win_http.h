@@ -7,7 +7,7 @@
  */
 #ifndef LAB_WIN_HTTP_H   // 头文件保护：防止被重复包含
 #define LAB_WIN_HTTP_H
-#include "client.h"      // 需要 client.h 里的类型（参数说明见 client.h 模块 3）
+#include "../client.h"   // 需要 client.h 里的类型（参数说明见 client.h 的"1.1 网络传输接口"）
 // 参数：(上下文, 服务器, 方法, 路径, apikey, 访问令牌, 请求体, 写回状态码, 写回错误, 错误缓冲区大小)
 // 返回：响应内容（堆内存，调用者 free）；网络失败返回 NULL
 char *lab_win_http(void *, const char *, const char *, const char *, const char *, const char *, const char *,

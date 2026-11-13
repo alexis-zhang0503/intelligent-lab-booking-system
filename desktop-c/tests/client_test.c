@@ -11,7 +11,7 @@
 #include <string.h>
 
 //【讲解 L7】引入 ../src/ui_theme.h 的类型和函数声明。
-#include "../src/ui_theme.h"
+#include "../src/other/ui_theme.h"
 
 //【讲解 L9】声明共享的数据类型；字段的容量、所有权和用途见本结构体内各行。
 typedef struct {

@@ -2,9 +2,14 @@
  * main.c —— Windows 桌面版的界面层：窗口、按钮、列表、弹窗都在这里。
  *
  * 用户看到的一切（登录页、预约页的 40 个设备按钮、"我的"页、故障记录、用户管理、智能助手）
- * 都由本文件创建和绘制；真正的业务（登录、预约、签到……）交给 client.c，联网交给 win_http.c。
+ * 都由本文件创建和绘制；真正的业务交给 src/ 下的三个模块文件，联网交给 win_http.c。
  *
- * 整体运行流程（答辩必讲）：
+ * 【答辩】本文件整体不讲。和三个模块相关的几处已经加了标记，按 Ctrl+F 搜索即可跳到：
+ *   【答辩·第1人】装入网络发送函数、操作后重新加载数据
+ *   【答辩·第2人】点"确认预约"生成防重复编号、后台提交预约、后台签到签退
+ *   【答辩·第3人】点"发送"/"选择此方案"、组装 AI 请求、发到云端、收到回复
+ *
+ * 整体运行流程（供参考，答辩不讲）：
  *   1. wWinMain 创建主窗口，进入"消息循环"：不停地 GetMessage → DispatchMessage。
  *   2. 用户点击按钮 → Windows 发来 WM_COMMAND 消息 → wndproc → command(按钮编号)。
  *   3. command 检查输入、弹确认框，把这次操作需要的数据装进一个 Job 结构体（"任务单"）。
@@ -34,7 +39,8 @@
 // objbase.h：生成 GUID（防重复编号）；shellapi.h：用浏览器打开下载页
 // windowsx.h：Win32 辅助宏；ui_theme.h：状态翻译、时间格式化等界面小工具
 #include <windows.h>
-#include "client.h"
+// 【答辩】共用头文件 client.h 在上一级目录 src/
+#include "../client.h"
 #include "win_http.h"
 #include <commctrl.h>
 #include <commdlg.h>
@@ -576,6 +582,7 @@ static DWORD WINAPI worker(void *arg) {
         const char *keys[9];
         for (int i = 0; i < 9; i++)
             keys[i] = j->keys[i];
+        // 【答辩·第2人】后台按小时逐个提交预约
         success = lab_reserve_range(&j->client, j->date, j->start, j->end, j->devices, (size_t)j->count, keys,
                                     &committed);
         // 中途失败时告诉用户前面已经约上了几个小时（逐小时提交不是一个整体事务）
@@ -585,9 +592,11 @@ static DWORD WINAPI worker(void *arg) {
                      j->client.error);
     // 【任务：签到/签退】当前时间在这里现取，因为用户点"确认"到真正发请求之间可能过了一会儿
     } else if (j->kind == JOB_ATTEND)
+        // 【答辩·第2人】后台执行签到 / 签退
         success = lab_attend(&j->client, j->row, j->action, now_ms());
     // 【任务：智能助手】把请求发给云端 AI 函数；回复留在 Job 里，由界面线程记进对话历史
     else if (j->kind == JOB_AGENT) {
+        // 【答辩·第3人】把请求发到云端 AI 函数 deepseek-booking-agent
         r = lab_request(&j->client,"POST","/functions/v1/deepseek-booking-agent",j->agentRequest);
         j->agentResult=r;
         // 回复里 outcome 为 failed 才算失败
@@ -718,6 +727,7 @@ static DWORD WINAPI worker(void *arg) {
         snprintf(j->message, sizeof(j->message), "%s", j->client.error);
     // 只要还处于登录状态，就重新加载全部数据，让界面立刻看到操作结果
     if (*j->client.session.access) {
+        // 【答辩·第1人】每次操作成功后，都在后台重新加载 5 张表
         j->loaded = lab_load_model(&j->client, &j->model);
         // 操作成功但刷新失败：明确告诉用户，避免误以为没约上而重复提交
         if (success && !j->loaded) {
@@ -935,6 +945,7 @@ static void command(int id) {
         j->kind = JOB_REFRESH;
         break;
     // 确认预约：至少选一台设备，结束时间必须晚于开始时间
+    // 【答辩·第2人】点"确认预约"：检查选择，并为 8~16 点每小时生成一个防重复编号
     case ID_BOOK:
         j->kind = JOB_BOOK;
         if (!j->count || j->start >= j->end) {
@@ -1023,6 +1034,7 @@ static void command(int id) {
         j->kind = JOB_SUGGEST;
         break;
     // 智能助手的"发送"和"选择此方案"：生成一个 GUID 作为本次请求编号；action 记录是否管理员（决定用哪种助手）
+    // 【答辩·第3人】点"发送"或"选择此方案"：生成本次请求编号
     case ID_AGENT_CONFIRM:
     case ID_AGENT:
         { GUID g; if(FAILED(CoCreateGuid(&g)))goto abort;
@@ -1042,6 +1054,7 @@ static void command(int id) {
         goto abort;
     }
     // 智能助手的额外准备：组装发给 AI 的请求
+    // 【答辩·第3人】组装发给 AI 的请求：绑定账号 → （确认时）生成确认信息 → 打包请求
     if(j->kind==JOB_AGENT){
         lab_agent_bind(&agent,client.session.uid);
         // "发送"时说明框不能为空
@@ -1395,6 +1408,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             // 智能推荐：保存一份候选方案的深拷贝，供下拉框使用
             if(j->kind==JOB_SUGGEST&&j->agentResult){cJSON_Delete(scheduleCandidates);scheduleCandidates=cJSON_Duplicate(j->agentResult,1);}
             // 智能助手：确认这个回复属于当前账号（防止切换账号后旧请求的回复才到），再记进对话历史
+            // 【答辩·第3人】收到 AI 回复：确认属于当前账号后记进对话历史
             if(j->kind==JOB_AGENT && j->agentResult && !strcmp(client.session.uid,agent.owner))lab_agent_accept(&agent,j->client.session.uid,j->note,j->agentResult);
             // 数据重新加载成功：释放旧数据，换上新数据。model = j->model 只复制了 5 个指针（浅拷贝），
             // 所以紧接着把 Job 里的指针清零，表示所有权已转给全局 model；否则后面释放 Job 时会把同一份数据再释放一次
@@ -1550,6 +1564,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR commandLine, 
     // 初始化 COM，生成 GUID 要用
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     // 把 Windows 联网函数装进业务层客户端：client.c 之后通过这个函数指针发请求，自己不依赖 Windows
+    // 【答辩·第1人】把 Windows 版的网络发送函数装进函数指针 LabTransport，业务层从此通过它联网
     client.transport = lab_win_http;
     // 注册主窗口类：指定消息处理函数 wndproc、图标、鼠标指针
     WNDCLASSEXW wc = {0};
